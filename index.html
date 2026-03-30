@@ -4,2015 +4,830 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Perception System</title>
-
-<!-- TensorFlow.js and Teachable Machine -->
 <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@latest/dist/tf.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@teachablemachine/image@latest/dist/teachablemachine-image.min.js"></script>
-
 <style>
-/* ============================================
-   FONTS
-   ============================================ */
-@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;700&family=Playfair+Display:ital,wght@0,400;0,700;1,400&family=Inter:wght@300;400;600&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500&family=Playfair+Display:ital,wght@0,400;0,500;0,700;1,400&family=Inter:wght@300;400;500&display=swap');
+
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{width:100%;height:100%;overflow:hidden;background:#000;font-family:'Inter',sans-serif;color:#ddd}
+
+/* ===== SVG FILTERS ===== */
+.svg-filters{position:absolute;width:0;height:0}
 
 /* ============================================
-   CSS CUSTOM PROPERTIES
+   INTRO — cinematic, not a boot screen
    ============================================ */
-:root {
-  --machine-primary: #00ffc8;
-  --machine-secondary: #0a6e5c;
-  --machine-dim: #0d3d33;
-  --machine-bg: #030a08;
-  --machine-text: #7dffd4;
-  --machine-grid: rgba(0, 255, 200, 0.04);
-
-  --human-primary: #ffd6a0;
-  --human-secondary: #ff8a50;
-  --human-warm: #ffeedd;
-  --human-bg: #0a0604;
-  --human-glow: rgba(255, 180, 100, 0.15);
-
-  --hallucination-red: #ff2040;
-  --hallucination-cyan: #00f0ff;
-  --hallucination-purple: #c040ff;
-  --hallucination-bg: #050005;
-
-  --current-primary: var(--machine-primary);
-  --current-bg: var(--machine-bg);
+#intro{
+  position:fixed;inset:0;z-index:2000;background:#000;
+  display:flex;align-items:center;justify-content:center;
+  transition:opacity 1.5s ease;
 }
+#intro.done{opacity:0;pointer-events:none}
+
+#intro-text{
+  text-align:center;max-width:600px;padding:0 40px;
+}
+.intro-line{
+  font-family:'Playfair Display',serif;
+  font-size:24px;line-height:1.9;color:#333;
+  opacity:0;transform:translateY(15px);
+  transition:opacity 1s ease,transform 1s ease,color 0.8s ease;
+  margin-bottom:8px;
+}
+.intro-line.show{opacity:1;transform:translateY(0);color:#777}
+.intro-line.fade{color:#1a1a1a;opacity:0.4}
 
 /* ============================================
-   RESET & BASE
+   INSTRUCTIONS — brief, then gone
    ============================================ */
-* {
-  margin: 0;
-  padding: 0;
-  box-sizing: border-box;
+#instructions{
+  position:fixed;inset:0;z-index:1500;
+  background:rgba(0,0,0,0.95);
+  display:flex;align-items:center;justify-content:center;
+  opacity:0;pointer-events:none;transition:opacity 0.8s ease;
 }
+#instructions.show{opacity:1;pointer-events:auto}
 
-html, body {
-  width: 100%;
-  height: 100%;
-  overflow: hidden;
-  background: #000;
-  color: #ccc;
-  font-family: 'JetBrains Mono', monospace;
+.instr-inner{text-align:center;max-width:440px}
+.instr-inner h2{
+  font-family:'JetBrains Mono',monospace;font-size:10px;
+  letter-spacing:5px;text-transform:uppercase;color:#444;margin-bottom:40px;
 }
+.instr-row{
+  display:flex;align-items:center;gap:16px;margin-bottom:24px;text-align:left;
+}
+.instr-icon{
+  width:44px;height:44px;border-radius:50%;
+  border:1px solid rgba(255,255,255,0.08);
+  display:flex;align-items:center;justify-content:center;
+  font-size:18px;flex-shrink:0;
+}
+.instr-text{font-size:12px;line-height:1.6;color:#666}
+.instr-text strong{color:#aaa}
+#begin-btn{
+  margin-top:28px;padding:10px 28px;background:none;
+  border:1px solid rgba(255,255,255,0.1);color:#666;
+  font-family:'JetBrains Mono',monospace;font-size:9px;
+  letter-spacing:3px;text-transform:uppercase;cursor:pointer;
+  transition:all 0.3s ease;
+}
+#begin-btn:hover{border-color:rgba(255,255,255,0.3);color:#bbb}
 
 /* ============================================
-   BOOT SEQUENCE
+   MAIN STAGE — full screen, one moment at a time
    ============================================ */
-#boot-screen {
-  position: fixed;
-  inset: 0;
-  z-index: 1000;
-  background: #000;
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-  align-items: center;
-  transition: opacity 1s ease;
+#stage{
+  position:fixed;inset:0;opacity:0;
+  transition:opacity 1.2s ease;
+}
+#stage.live{opacity:1}
+
+/* ===== MOMENT — fills screen ===== */
+.moment{
+  position:absolute;inset:0;
+  opacity:0;pointer-events:none;
+  transition:opacity 1.2s ease;
+  display:flex;align-items:center;justify-content:center;
+}
+.moment.active{opacity:1;pointer-events:auto}
+
+/* Full-bleed image background */
+.moment-bg{
+  position:absolute;inset:0;z-index:1;
+  transition:filter 1.2s ease,transform 1.2s ease;
+}
+.moment-bg img,.moment-bg video{
+  width:100%;height:100%;object-fit:cover;display:block;
+}
+/* Placeholder when no real image */
+.moment-bg .ph{
+  width:100%;height:100%;
+  display:flex;align-items:center;justify-content:center;
+  font-family:'JetBrains Mono',monospace;font-size:9px;
+  color:#1a1a1a;letter-spacing:2px;
+}
+.moment-bg .ph.ph1{background:linear-gradient(135deg,#0d0906,#1a1008,#0a0704)}
+.moment-bg .ph.ph2{background:linear-gradient(135deg,#060810,#0a1018,#04060d)}
+.moment-bg .ph.ph3{background:linear-gradient(135deg,#080510,#10081a,#060410)}
+.moment-bg .ph.ph4{background:linear-gradient(135deg,#100906,#1a0f08,#0d0804)}
+.moment-bg .ph.ph5{background:linear-gradient(135deg,#060d0a,#0a1810,#040d08)}
+
+/* Dark overlay for text readability */
+.moment-dim{
+  position:absolute;inset:0;z-index:2;
+  background:rgba(0,0,0,0.55);
+  transition:background 0.8s ease;
+}
+.mode-machine .moment-dim{background:rgba(0,0,0,0.7)}
+.mode-glitch .moment-dim{background:rgba(0,0,0,0.4)}
+
+/* ===== HUMAN TEXT (default) ===== */
+.human-layer{
+  position:relative;z-index:10;
+  max-width:680px;padding:0 40px;
+  text-align:center;
+  opacity:1;transition:opacity 0.8s ease;
+}
+.mode-machine .human-layer{opacity:0}
+.mode-glitch .human-layer{opacity:0}
+
+.human-layer .h-title{
+  font-family:'Playfair Display',serif;
+  font-size:36px;line-height:1.5;font-weight:400;
+  color:rgba(255,255,255,0.9);margin-bottom:16px;
+  letter-spacing:0.5px;
+}
+.human-layer .h-body{
+  font-size:16px;line-height:1.9;color:rgba(255,255,255,0.5);
+  font-weight:300;
+}
+.human-layer .h-sub{
+  margin-top:20px;font-size:12px;font-style:italic;
+  color:rgba(255,255,255,0.25);
 }
 
-#boot-screen.fade-out {
-  opacity: 0;
-  pointer-events: none;
+/* ===== ASSOCIATIONS — small floating images ===== */
+.associations{
+  position:absolute;z-index:10;
+  display:flex;gap:8px;bottom:80px;left:50%;
+  transform:translateX(-50%);
+  opacity:0.6;transition:opacity 0.8s ease;
+}
+.mode-machine .associations{opacity:0.15;filter:grayscale(1)}
+.mode-glitch .associations{filter:url(#liquify);opacity:0.5}
+
+.assoc{
+  width:56px;height:56px;overflow:hidden;
+  border:1px solid rgba(255,255,255,0.06);
+  transition:filter 1s ease;
+}
+.assoc img{width:100%;height:100%;object-fit:cover}
+.assoc .ap{
+  width:100%;height:100%;background:#111;
+  display:flex;align-items:center;justify-content:center;
+  font-size:6px;color:#333;font-family:'JetBrains Mono',monospace;
 }
 
-#boot-text {
-  font-family: 'JetBrains Mono', monospace;
-  font-size: 14px;
-  color: #444;
-  text-align: left;
-  width: 420px;
-  line-height: 2;
+/* ===== MACHINE OVERLAY ===== */
+.machine-layer{
+  position:absolute;inset:0;z-index:15;
+  pointer-events:none;opacity:0;
+  transition:opacity 0.6s ease;
+  display:flex;align-items:center;justify-content:center;
+}
+.mode-machine .machine-layer{opacity:1}
+
+/* Bounding box on the image */
+.m-bbox{
+  position:absolute;
+  top:15%;left:20%;right:20%;bottom:15%;
+  border:1px solid rgba(0,255,200,0.12);
+}
+.m-bbox::before,.m-bbox::after{
+  content:'';position:absolute;width:18px;height:18px;
+  border-color:rgba(0,255,200,0.45);border-style:solid;
+}
+.m-bbox::before{top:-1px;left:-1px;border-width:2px 0 0 2px}
+.m-bbox::after{bottom:-1px;right:-1px;border-width:0 2px 2px 0}
+
+.m-corner-tr,.m-corner-bl{
+  position:absolute;width:18px;height:18px;
+  border-color:rgba(0,255,200,0.45);border-style:solid;
+}
+.m-corner-tr{top:calc(15% - 1px);right:calc(20% - 1px);border-width:2px 2px 0 0}
+.m-corner-bl{bottom:calc(15% - 1px);left:calc(20% - 1px);border-width:0 0 2px 2px}
+
+.m-sweep{
+  position:absolute;left:20%;right:20%;height:1px;
+  background:linear-gradient(90deg,transparent,rgba(0,255,200,0.35),transparent);
+  animation:sweep 3.5s linear infinite;
+}
+@keyframes sweep{0%{top:15%}100%{top:85%}}
+
+/* Machine data text — centered */
+.m-data{
+  max-width:500px;text-align:left;
+  font-family:'JetBrains Mono',monospace;
+  font-size:12px;line-height:2.2;
+  color:rgba(0,255,200,0.7);
+  position:relative;z-index:20;
+}
+.m-data .mk{color:rgba(0,255,200,0.3)}
+.m-data .mv{color:rgba(0,255,200,0.75)}
+.m-data .mc{
+  display:block;margin-top:12px;font-size:9px;
+  color:rgba(0,255,200,0.25);
+  border-top:1px solid rgba(0,255,200,0.06);padding-top:10px;
 }
 
-#boot-text .line {
-  opacity: 0;
-  transform: translateY(4px);
-  transition: opacity 0.4s ease, transform 0.4s ease;
+/* Machine label */
+.m-label{
+  position:absolute;bottom:calc(15% + 8px);left:calc(20% + 8px);
+  font-family:'JetBrains Mono',monospace;font-size:8px;
+  color:rgba(0,255,200,0.5);background:rgba(0,0,0,0.6);
+  padding:2px 8px;letter-spacing:2px;
+}
+.m-conf{
+  position:absolute;top:calc(15% + 6px);right:calc(20% + 6px);
+  font-family:'JetBrains Mono',monospace;font-size:8px;
+  color:rgba(0,255,200,0.3);
 }
 
-#boot-text .line.visible {
-  opacity: 1;
-  transform: translateY(0);
-}
-
-#boot-text .line.active {
-  color: #888;
-}
-
-#boot-text .line.done {
-  color: #333;
-}
-
-.boot-cursor {
-  display: inline-block;
-  width: 7px;
-  height: 14px;
-  background: #555;
-  animation: blink 0.6s step-end infinite;
-  vertical-align: middle;
-  margin-left: 4px;
-}
-
-@keyframes blink {
-  50% { opacity: 0; }
-}
-
-/* ============================================
-   SCAN LINES OVERLAY (always present, subtle)
-   ============================================ */
-#scanlines {
-  position: fixed;
-  inset: 0;
-  z-index: 900;
-  pointer-events: none;
-  background: repeating-linear-gradient(
-    0deg,
-    transparent,
-    transparent 2px,
-    rgba(0,0,0,0.08) 2px,
-    rgba(0,0,0,0.08) 4px
-  );
-  opacity: 0.5;
-}
-
-/* ============================================
-   MAIN EXPERIENCE CONTAINER
-   ============================================ */
-#experience {
-  position: fixed;
-  inset: 0;
-  opacity: 0;
-  transition: opacity 1.5s ease;
-  overflow: hidden;
-}
-
-#experience.active {
-  opacity: 1;
-}
-
-/* Background noise texture */
-#experience::before {
-  content: '';
-  position: absolute;
-  inset: -50%;
-  width: 200%;
-  height: 200%;
-  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.03'/%3E%3C/svg%3E");
-  pointer-events: none;
-  z-index: 0;
-  animation: noiseShift 0.5s steps(4) infinite;
-}
-
-@keyframes noiseShift {
-  0% { transform: translate(0, 0); }
-  25% { transform: translate(-2%, -1%); }
-  50% { transform: translate(1%, 2%); }
-  75% { transform: translate(-1%, -2%); }
-  100% { transform: translate(2%, 1%); }
-}
-
-/* ============================================
-   WEBCAM FEED (surveillance thumbnail)
-   ============================================ */
-#webcam-container {
-  position: fixed;
-  bottom: 24px;
-  right: 24px;
-  width: 160px;
-  height: 120px;
-  z-index: 800;
-  border: 1px solid rgba(255,255,255,0.1);
-  overflow: hidden;
-  opacity: 0.7;
-  transition: border-color 0.8s ease, opacity 0.5s ease;
-}
-
-#webcam-container::before {
-  content: 'CAM_01';
-  position: absolute;
-  top: 4px;
-  left: 6px;
-  font-size: 8px;
-  color: rgba(255,255,255,0.3);
-  z-index: 2;
-  font-family: 'JetBrains Mono', monospace;
-}
-
-#webcam-container::after {
-  content: '';
-  position: absolute;
-  top: 4px;
-  right: 6px;
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: #ff3333;
-  z-index: 2;
-  animation: recBlink 1.5s ease infinite;
-}
-
-@keyframes recBlink {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.2; }
-}
-
-#webcam {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-  filter: grayscale(0.5) contrast(1.2);
-  transform: scaleX(-1);
-}
-
-/* Mode-specific webcam styles */
-.mode-machine #webcam-container {
-  border-color: rgba(0, 255, 200, 0.2);
-}
-
-.mode-human #webcam-container {
-  border-color: rgba(255, 180, 100, 0.2);
-  opacity: 0.5;
-}
-
-.mode-hallucination #webcam-container {
-  border-color: rgba(255, 32, 64, 0.4);
-  animation: camGlitch 0.3s steps(2) infinite;
-}
-
-@keyframes camGlitch {
-  0% { transform: translate(0,0); }
-  50% { transform: translate(-2px, 1px); }
-  100% { transform: translate(1px, -1px); }
-}
-
-/* ============================================
-   MODE INDICATOR
-   ============================================ */
-#mode-indicator {
-  position: fixed;
-  top: 24px;
-  left: 28px;
-  z-index: 800;
-  font-size: 10px;
-  letter-spacing: 3px;
-  text-transform: uppercase;
-  opacity: 0.5;
-  transition: color 0.8s ease;
-}
-
-#mode-indicator .mode-label {
-  display: none;
-}
-#mode-indicator .mode-label.active {
-  display: inline;
-}
-
-.mode-machine #mode-indicator { color: var(--machine-primary); }
-.mode-human #mode-indicator { color: var(--human-primary); }
-.mode-hallucination #mode-indicator { color: var(--hallucination-red); }
-
-/* ============================================
-   CONFIDENCE BAR
-   ============================================ */
-#confidence-bar {
-  position: fixed;
-  top: 24px;
-  right: 200px;
-  z-index: 800;
-  font-size: 9px;
-  letter-spacing: 1px;
-  color: rgba(255,255,255,0.2);
-  font-family: 'JetBrains Mono', monospace;
-}
-
-/* ============================================
-   MOMENT NAVIGATION
-   ============================================ */
-#moment-nav {
-  position: fixed;
-  right: 24px;
-  top: 50%;
-  transform: translateY(-50%);
-  z-index: 800;
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-}
-
-.nav-dot {
-  width: 8px;
-  height: 8px;
-  border: 1px solid rgba(255,255,255,0.15);
-  border-radius: 50%;
-  cursor: pointer;
-  transition: all 0.4s ease;
-  background: transparent;
-}
-
-.nav-dot.active {
-  background: rgba(255,255,255,0.5);
-  border-color: rgba(255,255,255,0.5);
-}
-
-.mode-machine .nav-dot.active {
-  background: var(--machine-primary);
-  border-color: var(--machine-primary);
-  box-shadow: 0 0 8px var(--machine-primary);
-}
-.mode-human .nav-dot.active {
-  background: var(--human-primary);
-  border-color: var(--human-primary);
-  box-shadow: 0 0 8px var(--human-secondary);
-}
-.mode-hallucination .nav-dot.active {
-  background: var(--hallucination-red);
-  border-color: var(--hallucination-red);
-  box-shadow: 0 0 8px var(--hallucination-red);
-}
-
-/* ============================================
-   SCROLL PROMPT
-   ============================================ */
-#scroll-prompt {
-  position: fixed;
-  bottom: 24px;
-  left: 50%;
-  transform: translateX(-50%);
-  z-index: 800;
-  font-size: 9px;
-  letter-spacing: 2px;
-  color: rgba(255,255,255,0.15);
-  text-transform: uppercase;
-  animation: promptPulse 2s ease infinite;
-}
-
-@keyframes promptPulse {
-  0%, 100% { opacity: 0.15; }
-  50% { opacity: 0.35; }
-}
-
-/* ============================================
-   CONTENT STAGE
-   ============================================ */
-#content-stage {
-  position: relative;
-  width: 100%;
-  height: 100%;
-  z-index: 10;
-}
-
-.moment {
-  position: absolute;
-  inset: 0;
-  display: flex;
-  opacity: 0;
-  pointer-events: none;
-  transition: opacity 0.8s ease;
-}
-
-.moment.active {
-  opacity: 1;
-  pointer-events: auto;
-}
-
-/* ============================================
-   MOMENT LAYOUT
-   ============================================ */
-.moment-inner {
-  width: 100%;
-  height: 100%;
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  grid-template-rows: 1fr;
-  gap: 0;
-  padding: 80px 60px 60px 60px;
-  position: relative;
-}
-
-.moment-visual {
-  position: relative;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  overflow: hidden;
-}
-
-.moment-visual-inner {
-  position: relative;
-  width: 85%;
-  height: 75%;
-  overflow: hidden;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-/* ===== PLACEHOLDER VISUALS ===== */
-/* REPLACE: Swap these placeholder styles with your actual images/videos */
-.visual-placeholder {
-  width: 100%;
-  height: 100%;
-  position: relative;
-  overflow: hidden;
-}
-
-.visual-placeholder .placeholder-img {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-  transition: filter 1.2s ease, transform 1.2s ease, opacity 1s ease;
-}
-
-/* When no image, show generated visual */
-.visual-placeholder .generated-visual {
-  width: 100%;
-  height: 100%;
-  position: absolute;
-  inset: 0;
-}
-
-/* Machine mode visual treatment */
-.mode-machine .visual-placeholder .placeholder-img,
-.mode-machine .visual-placeholder .generated-visual {
-  filter: grayscale(1) contrast(1.4) brightness(0.7);
-}
-
-/* Human mode visual treatment */
-.mode-human .visual-placeholder .placeholder-img,
-.mode-human .visual-placeholder .generated-visual {
-  filter: saturate(1.1) contrast(1.05) brightness(1.05);
-}
-
-/* Hallucination mode visual treatment */
-.mode-hallucination .visual-placeholder .placeholder-img,
-.mode-hallucination .visual-placeholder .generated-visual {
-  animation: visualGlitch 0.15s steps(2) infinite;
-  filter: hue-rotate(90deg) contrast(1.5) saturate(2);
-}
-
-@keyframes visualGlitch {
-  0% { transform: translate(0, 0) scale(1); clip-path: inset(0 0 0 0); }
-  25% { transform: translate(-3px, 2px) scale(1.01); clip-path: inset(10% 0 20% 0); }
-  50% { transform: translate(2px, -1px) scale(0.99); clip-path: inset(40% 0 10% 0); }
-  75% { transform: translate(-1px, 3px) scale(1.02); clip-path: inset(5% 0 60% 0); }
-  100% { transform: translate(0, 0) scale(1); clip-path: inset(0 0 0 0); }
-}
-
-/* Machine overlay: bounding box + scan */
-.machine-overlay {
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
-  opacity: 0;
-  transition: opacity 0.8s ease;
-}
-
-.mode-machine .machine-overlay {
-  opacity: 1;
-}
-
-.machine-overlay .bounding-box {
-  position: absolute;
-  inset: 8%;
-  border: 1px solid rgba(0, 255, 200, 0.3);
-}
-
-.machine-overlay .bounding-box::before,
-.machine-overlay .bounding-box::after {
-  content: '';
-  position: absolute;
-  width: 16px;
-  height: 16px;
-  border-color: var(--machine-primary);
-  border-style: solid;
-}
-
-.machine-overlay .bounding-box::before {
-  top: -1px;
-  left: -1px;
-  border-width: 2px 0 0 2px;
-}
-
-.machine-overlay .bounding-box::after {
-  bottom: -1px;
-  right: -1px;
-  border-width: 0 2px 2px 0;
-}
-
-.machine-overlay .corner-tr,
-.machine-overlay .corner-bl {
-  position: absolute;
-  width: 16px;
-  height: 16px;
-  border-color: var(--machine-primary);
-  border-style: solid;
-}
-
-.machine-overlay .corner-tr {
-  top: calc(8% - 1px);
-  right: calc(8% - 1px);
-  border-width: 2px 2px 0 0;
-}
-
-.machine-overlay .corner-bl {
-  bottom: calc(8% - 1px);
-  left: calc(8% - 1px);
-  border-width: 0 0 2px 2px;
-}
-
-.machine-overlay .scan-line {
-  position: absolute;
-  left: 8%;
-  right: 8%;
-  height: 1px;
-  background: linear-gradient(90deg, transparent, var(--machine-primary), transparent);
-  opacity: 0.5;
-  animation: scanMove 3s linear infinite;
-}
-
-@keyframes scanMove {
-  0% { top: 8%; }
-  100% { top: 92%; }
-}
-
-.machine-overlay .label-tag {
-  position: absolute;
-  bottom: calc(8% + 8px);
-  left: calc(8% + 8px);
-  font-size: 9px;
-  color: var(--machine-primary);
-  background: rgba(0,0,0,0.7);
-  padding: 2px 6px;
-  letter-spacing: 1px;
-}
-
-/* Grid overlay for machine mode */
-.grid-overlay {
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
-  opacity: 0;
-  transition: opacity 0.8s ease;
+/* Subtle grid */
+#m-grid{
+  position:fixed;inset:0;z-index:4;pointer-events:none;
+  opacity:0;transition:opacity 0.8s ease;
   background-image:
-    linear-gradient(rgba(0,255,200,0.03) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(0,255,200,0.03) 1px, transparent 1px);
-  background-size: 40px 40px;
+    linear-gradient(rgba(0,255,200,0.012) 1px,transparent 1px),
+    linear-gradient(90deg,rgba(0,255,200,0.012) 1px,transparent 1px);
+  background-size:80px 80px;
+}
+.mode-machine #m-grid{opacity:1}
+
+/* Machine image treatment */
+.mode-machine .moment-bg{
+  filter:grayscale(1) contrast(1.4) brightness(0.5);
 }
 
-.mode-machine .grid-overlay {
-  opacity: 1;
+/* ===== GLITCH / LIQUIFY ===== */
+.mode-glitch .moment-bg{
+  filter:url(#liquify);
+  transform:scale(1.02);
+}
+.mode-glitch .human-layer{opacity:0}
+
+/* Glitch text fragments that appear */
+.glitch-layer{
+  position:absolute;inset:0;z-index:15;
+  pointer-events:none;opacity:0;
+  transition:opacity 0.5s ease;
+  display:flex;align-items:center;justify-content:center;
+}
+.mode-glitch .glitch-layer{opacity:1}
+
+.glitch-text{
+  max-width:500px;text-align:center;
+  filter:url(#liquify-text);
+}
+.glitch-text .gl{
+  display:block;line-height:2.4;
+}
+.glitch-text .gl:nth-child(odd){
+  font-family:'Playfair Display',serif;
+  font-size:20px;color:rgba(255,255,255,0.5);
+}
+.glitch-text .gl:nth-child(even){
+  font-family:'JetBrains Mono',monospace;
+  font-size:10px;color:rgba(255,255,255,0.2);
+  letter-spacing:2px;
 }
 
-/* Human overlay: soft glow border */
-.human-overlay {
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
-  opacity: 0;
-  transition: opacity 1s ease;
+/* ===== FIXED UI ===== */
+#mode-label{
+  position:fixed;bottom:24px;left:24px;z-index:900;
+  font-family:'JetBrains Mono',monospace;
+  font-size:13px;letter-spacing:5px;text-transform:uppercase;
+  transition:color 0.6s ease;opacity:0.6;
+}
+.mode-human #mode-label{color:#999}
+.mode-machine #mode-label{color:rgba(0,255,200,0.7)}
+.mode-glitch #mode-label{color:rgba(255,60,90,0.6)}
+.ml{display:none}
+.ml.on{display:inline}
+
+/* Webcam */
+#cam{
+  position:fixed;bottom:18px;right:18px;
+  width:110px;height:82px;z-index:900;
+  border:1px solid rgba(255,255,255,0.04);
+  overflow:hidden;opacity:0.4;
+  transition:border-color 0.5s ease;
+}
+#cam::after{
+  content:'';position:absolute;top:3px;right:4px;
+  width:4px;height:4px;border-radius:50%;background:#f33;
+  animation:rec 1s ease infinite;
+}
+@keyframes rec{50%{opacity:0.1}}
+#cam video{
+  width:100%;height:100%;object-fit:cover;
+  transform:scaleX(-1);filter:grayscale(0.5) contrast(1.1);
+}
+.mode-machine #cam{border-color:rgba(0,255,200,0.1)}
+.mode-glitch #cam{border-color:rgba(255,60,90,0.2)}
+
+/* Moment counter */
+#counter{
+  position:fixed;bottom:24px;right:150px;z-index:900;
+  font-family:'JetBrains Mono',monospace;font-size:9px;
+  color:rgba(255,255,255,0.12);letter-spacing:2px;
 }
 
-.mode-human .human-overlay {
-  opacity: 1;
+/* Progress dots */
+#dots{
+  position:fixed;right:18px;top:50%;transform:translateY(-50%);
+  z-index:900;display:flex;flex-direction:column;gap:16px;
+}
+.dot{
+  width:5px;height:5px;border-radius:50%;
+  border:1px solid rgba(255,255,255,0.08);
+  cursor:pointer;transition:all 0.4s ease;
+}
+.dot.on{background:rgba(255,255,255,0.35);border-color:rgba(255,255,255,0.35)}
+.mode-machine .dot.on{background:rgba(0,255,200,0.5);border-color:rgba(0,255,200,0.5)}
+
+/* Scanlines */
+#scan{
+  position:fixed;inset:0;z-index:800;pointer-events:none;
+  background:repeating-linear-gradient(0deg,transparent,transparent 3px,rgba(0,0,0,0.03) 3px,rgba(0,0,0,0.03) 4px);
+  opacity:0.5;
 }
 
-.human-overlay .glow-border {
-  position: absolute;
-  inset: 4%;
-  border: 1px solid rgba(255, 200, 140, 0.1);
-  box-shadow: inset 0 0 60px rgba(255, 180, 100, 0.05);
-  border-radius: 2px;
-}
-
-/* ============================================
-   TEXT CONTENT AREA
-   ============================================ */
-.moment-text {
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-  padding: 0 40px 0 60px;
-  position: relative;
-}
-
-/* Moment number */
-.moment-index {
-  font-size: 10px;
-  letter-spacing: 4px;
-  text-transform: uppercase;
-  margin-bottom: 24px;
-  opacity: 0.3;
-  transition: color 0.8s ease;
-}
-
-.mode-machine .moment-index { color: var(--machine-primary); }
-.mode-human .moment-index { color: var(--human-primary); opacity: 0.4; }
-.mode-hallucination .moment-index { color: var(--hallucination-red); animation: indexGlitch 0.3s steps(2) infinite; }
-
-@keyframes indexGlitch {
-  50% { opacity: 0.1; transform: translateX(3px); }
-}
-
-/* Machine text block */
-.text-machine {
-  font-family: 'JetBrains Mono', monospace;
-  font-size: 12px;
-  line-height: 2;
-  color: var(--machine-text);
-  opacity: 0;
-  transform: translateY(10px);
-  transition: opacity 0.6s ease, transform 0.6s ease;
-  position: absolute;
-  top: 50%;
-  transform: translateY(-50%);
-  left: 60px;
-  right: 40px;
-  white-space: pre-line;
-}
-
-.mode-machine .text-machine {
-  opacity: 1;
-}
-
-.text-machine .data-line {
-  display: block;
-  opacity: 0;
-  animation: typeIn 0.3s ease forwards;
-}
-
-.mode-machine .text-machine .data-line {
-  opacity: 1;
-}
-
-.text-machine .data-key {
-  color: rgba(0, 255, 200, 0.5);
-}
-
-.text-machine .data-value {
-  color: var(--machine-primary);
-}
-
-.text-machine .confidence {
-  color: var(--machine-secondary);
-  font-size: 10px;
-  margin-top: 8px;
-  display: block;
-}
-
-/* Human text block */
-.text-human {
-  font-family: 'Playfair Display', serif;
-  font-size: 26px;
-  line-height: 1.6;
-  color: var(--human-warm);
-  opacity: 0;
-  position: absolute;
-  top: 50%;
-  transform: translateY(-50%);
-  left: 60px;
-  right: 40px;
-  transition: opacity 1s ease;
-  letter-spacing: 0.3px;
-}
-
-.mode-human .text-human {
-  opacity: 1;
-}
-
-.text-human .human-subtext {
-  display: block;
-  font-family: 'Inter', sans-serif;
-  font-size: 13px;
-  color: rgba(255, 220, 180, 0.4);
-  margin-top: 20px;
-  font-style: italic;
-  letter-spacing: 0.5px;
-}
-
-/* Hallucination text block */
-.text-hallucination {
-  position: absolute;
-  top: 50%;
-  transform: translateY(-50%);
-  left: 60px;
-  right: 40px;
-  opacity: 0;
-  transition: opacity 0.4s ease;
-}
-
-.mode-hallucination .text-hallucination {
-  opacity: 1;
-}
-
-.text-hallucination .glitch-line {
-  display: block;
-  font-family: 'JetBrains Mono', monospace;
-  font-size: 13px;
-  line-height: 2.2;
-  animation: glitchText 0.2s steps(3) infinite;
-  position: relative;
-}
-
-.text-hallucination .glitch-line:nth-child(odd) {
-  color: var(--hallucination-cyan);
-  font-family: 'Playfair Display', serif;
-  font-size: 20px;
-}
-
-.text-hallucination .glitch-line:nth-child(even) {
-  color: var(--hallucination-red);
-  font-size: 11px;
-  letter-spacing: 2px;
-}
-
-.text-hallucination .glitch-line:nth-child(3n) {
-  color: var(--hallucination-purple);
-  text-decoration: line-through;
-  opacity: 0.6;
-}
-
-@keyframes glitchText {
-  0% { transform: translate(0, 0); }
-  33% { transform: translate(-2px, 1px); }
-  66% { transform: translate(1px, -1px); }
-  100% { transform: translate(0, 0); }
-}
-
-/* ============================================
-   HALLUCINATION FULL-SCREEN EFFECTS
-   ============================================ */
-#hallucination-overlay {
-  position: fixed;
-  inset: 0;
-  z-index: 500;
-  pointer-events: none;
-  opacity: 0;
-  transition: opacity 0.3s ease;
-}
-
-.mode-hallucination #hallucination-overlay {
-  opacity: 1;
-}
-
-#hallucination-overlay .h-bar {
-  position: absolute;
-  left: 0;
-  right: 0;
-  height: 3px;
-  background: rgba(255, 32, 64, 0.15);
-  animation: hBarMove 0.1s steps(4) infinite;
-}
-
-@keyframes hBarMove {
-  0% { top: 20%; }
-  25% { top: 45%; }
-  50% { top: 70%; }
-  75% { top: 30%; }
-  100% { top: 55%; }
-}
-
-#hallucination-overlay .chromatic {
-  position: absolute;
-  inset: 0;
-  background: linear-gradient(
-    45deg,
-    rgba(255, 0, 60, 0.03) 0%,
-    transparent 30%,
-    rgba(0, 240, 255, 0.03) 60%,
-    transparent 100%
-  );
-  animation: chromaticShift 0.5s ease infinite alternate;
-}
-
-@keyframes chromaticShift {
-  0% { transform: translate(-2px, 0); }
-  100% { transform: translate(2px, 0); }
-}
-
-#hallucination-overlay .static-noise {
-  position: absolute;
-  inset: 0;
-  opacity: 0.06;
-  background: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.8' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
-  animation: noiseFlicker 0.08s steps(5) infinite;
-}
-
-@keyframes noiseFlicker {
-  0% { transform: translate(0,0) scale(1.5); }
-  20% { transform: translate(-5px, 3px) scale(1.5); }
-  40% { transform: translate(3px, -2px) scale(1.5); }
-  60% { transform: translate(-1px, 5px) scale(1.5); }
-  80% { transform: translate(4px, -3px) scale(1.5); }
-  100% { transform: translate(-3px, 1px) scale(1.5); }
-}
-
-/* ============================================
-   MODE TRANSITION EFFECTS
-   ============================================ */
-.mode-transition-flash {
-  position: fixed;
-  inset: 0;
-  z-index: 950;
-  pointer-events: none;
-  opacity: 0;
-}
-
-.mode-transition-flash.flash {
-  animation: modeFlash 0.3s ease;
-}
-
-@keyframes modeFlash {
-  0% { opacity: 0; }
-  20% { opacity: 0.15; }
-  100% { opacity: 0; }
-}
-
-.mode-machine ~ .mode-transition-flash.flash { background: var(--machine-primary); }
-.mode-human ~ .mode-transition-flash.flash { background: var(--human-primary); }
-.mode-hallucination ~ .mode-transition-flash.flash { background: var(--hallucination-red); }
-
-/* ============================================
-   AMBIENT PARTICLES (machine mode)
-   ============================================ */
-#particles {
-  position: fixed;
-  inset: 0;
-  z-index: 5;
-  pointer-events: none;
-  opacity: 0;
-  transition: opacity 1s ease;
-}
-
-.mode-machine #particles { opacity: 0.3; }
-.mode-human #particles { opacity: 0; }
-.mode-hallucination #particles { opacity: 0.5; }
-
-.particle {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  background: var(--machine-primary);
-  border-radius: 50%;
-  animation: particleFall linear infinite;
-}
-
-@keyframes particleFall {
-  0% { transform: translateY(-10px); opacity: 0; }
-  10% { opacity: 1; }
-  90% { opacity: 1; }
-  100% { transform: translateY(100vh); opacity: 0; }
-}
-
-/* ============================================
-   SYSTEM STATUS (bottom left)
-   ============================================ */
-#system-status {
-  position: fixed;
-  bottom: 24px;
-  left: 28px;
-  z-index: 800;
-  font-size: 9px;
-  color: rgba(255,255,255,0.15);
-  letter-spacing: 1px;
-  line-height: 2;
-}
-
-.mode-machine #system-status { color: rgba(0, 255, 200, 0.2); }
-.mode-human #system-status { color: rgba(255, 200, 140, 0.15); }
-.mode-hallucination #system-status {
-  color: rgba(255, 32, 64, 0.3);
-  animation: statusGlitch 0.5s steps(3) infinite;
-}
-
-@keyframes statusGlitch {
-  33% { transform: translateX(1px); opacity: 0.5; }
-  66% { transform: translateX(-1px); opacity: 0.8; }
-}
-
-/* ============================================
-   DIVIDER LINE
-   ============================================ */
-.moment-divider {
-  position: absolute;
-  top: 15%;
-  bottom: 15%;
-  left: 50%;
-  width: 1px;
-  background: rgba(255,255,255,0.05);
-  z-index: 2;
-  transition: background 0.8s ease;
-}
-
-.mode-machine .moment-divider {
-  background: rgba(0, 255, 200, 0.08);
-}
-
-.mode-human .moment-divider {
-  background: rgba(255, 200, 140, 0.05);
-}
-
-.mode-hallucination .moment-divider {
-  background: rgba(255, 32, 64, 0.15);
-  animation: divGlitch 0.2s steps(2) infinite;
-}
-
-@keyframes divGlitch {
-  50% { transform: translateX(3px) scaleY(0.95); opacity: 0.3; }
-}
-
-/* ============================================
-   FINAL MESSAGE (hallucination end state)
-   ============================================ */
-#final-message {
-  position: fixed;
-  inset: 0;
-  z-index: 850;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  opacity: 0;
-  pointer-events: none;
-  transition: opacity 2s ease;
-  background: rgba(0,0,0,0.85);
-}
-
-#final-message.visible {
-  opacity: 1;
-}
-
-#final-message p {
-  font-family: 'JetBrains Mono', monospace;
-  font-size: 13px;
-  letter-spacing: 3px;
-  text-transform: uppercase;
-  line-height: 2.5;
-  text-align: center;
-}
-
-#final-message p:nth-child(1) { color: var(--hallucination-red); }
-#final-message p:nth-child(2) { color: var(--hallucination-cyan); opacity: 0.7; }
-#final-message p:nth-child(3) { color: var(--hallucination-purple); opacity: 0.5; }
-
-/* ============================================
-   KEY HINT
-   ============================================ */
-#key-hint {
-  position: fixed;
-  top: 24px;
-  right: 24px;
-  z-index: 800;
-  font-size: 8px;
-  color: rgba(255,255,255,0.1);
-  letter-spacing: 1px;
-  text-align: right;
-  line-height: 2;
-}
-
-/* ============================================
-   RESPONSIVE
-   ============================================ */
-@media (max-width: 900px) {
-  .moment-inner {
-    grid-template-columns: 1fr;
-    grid-template-rows: 1fr 1fr;
-    padding: 60px 24px 40px 24px;
-  }
-
-  .moment-text {
-    padding: 0 20px;
-  }
-
-  .text-machine, .text-human, .text-hallucination {
-    left: 20px;
-    right: 20px;
-  }
-
-  .moment-divider {
-    top: 50%;
-    left: 10%;
-    right: 10%;
-    bottom: auto;
-    width: auto;
-    height: 1px;
-  }
+/* Vignette */
+#vig{
+  position:fixed;inset:0;z-index:799;pointer-events:none;
+  background:radial-gradient(ellipse at center,transparent 55%,rgba(0,0,0,0.6) 100%);
 }
 </style>
 </head>
 <body>
 
-<!-- ============================================
-     BOOT SEQUENCE
-     ============================================ -->
-<div id="boot-screen">
-  <div id="boot-text">
-    <div class="line" data-delay="300">$ input detected_</div>
-    <div class="line" data-delay="900">$ loading perception model...</div>
-    <div class="line" data-delay="1800">$ initializing memory archive...</div>
-    <div class="line" data-delay="2800">$ calibrating perception modes...</div>
-    <div class="line" data-delay="3600">$ mapping life data to system...</div>
-    <div class="line" data-delay="4500">$ webcam feed requested<span class="boot-cursor"></span></div>
-    <div class="line" data-delay="5800">$ system ready</div>
+<!-- SVG LIQUIFY FILTERS -->
+<svg class="svg-filters">
+<defs>
+  <filter id="liquify">
+    <feTurbulence type="turbulence" baseFrequency="0.012" numOctaves="3" seed="3" result="t">
+      <animate attributeName="baseFrequency" values="0.012;0.022;0.015;0.025;0.012" dur="3s" repeatCount="indefinite"/>
+    </feTurbulence>
+    <feDisplacementMap in="SourceGraphic" in2="t" scale="30" xChannelSelector="R" yChannelSelector="G">
+      <animate attributeName="scale" values="25;50;30;55;25" dur="2.5s" repeatCount="indefinite"/>
+    </feDisplacementMap>
+  </filter>
+  <filter id="liquify-text">
+    <feTurbulence type="turbulence" baseFrequency="0.018" numOctaves="2" seed="7" result="t">
+      <animate attributeName="baseFrequency" values="0.018;0.028;0.018" dur="4s" repeatCount="indefinite"/>
+    </feTurbulence>
+    <feDisplacementMap in="SourceGraphic" in2="t" scale="10" xChannelSelector="R" yChannelSelector="G">
+      <animate attributeName="scale" values="8;18;10;20;8" dur="3s" repeatCount="indefinite"/>
+    </feDisplacementMap>
+  </filter>
+</defs>
+</svg>
+
+<!-- ===== INTRO ===== -->
+<div id="intro">
+  <div id="intro-text">
+    <div class="intro-line" data-d="500">You think you know what you are looking at.</div>
+    <div class="intro-line" data-d="2800">A machine sees data. A human sees meaning.</div>
+    <div class="intro-line" data-d="5500">But what happens when the system tries to hold both at once?</div>
+    <div class="intro-line" data-d="8500">This is what breaks.</div>
   </div>
 </div>
 
-<!-- ============================================
-     SCAN LINES
-     ============================================ -->
-<div id="scanlines"></div>
+<!-- ===== INSTRUCTIONS ===== -->
+<div id="instructions">
+  <div class="instr-inner">
+    <h2>how to perceive</h2>
+    <div class="instr-row">
+      <div class="instr-icon">&#128578;</div>
+      <div class="instr-text"><strong>Show emotion</strong> — the system sees a human experience.</div>
+    </div>
+    <div class="instr-row">
+      <div class="instr-icon">&#128528;</div>
+      <div class="instr-text"><strong>Stay neutral</strong> — the machine takes over. Data, labels, analysis.</div>
+    </div>
+    <div class="instr-row">
+      <div class="instr-icon">&#9995;</div>
+      <div class="instr-text"><strong>Cover your face</strong> — the system cannot reconcile. Everything warps.</div>
+    </div>
+    <button id="begin-btn">enter</button>
+  </div>
+</div>
 
-<!-- ============================================
-     MAIN EXPERIENCE
-     ============================================ -->
-<div id="experience" class="mode-machine">
+<!-- ===== FIXED UI ===== -->
+<div id="scan"></div>
+<div id="vig"></div>
+<div id="m-grid"></div>
 
-  <!-- Ambient particles -->
-  <div id="particles"></div>
+<!-- ===== STAGE ===== -->
+<div id="stage" class="mode-human">
 
-  <!-- Grid overlay -->
-  <div class="grid-overlay"></div>
-
-  <!-- Mode indicator -->
-  <div id="mode-indicator">
-    <span class="mode-label" data-mode="machine">mode: machine</span>
-    <span class="mode-label" data-mode="human">mode: human</span>
-    <span class="mode-label" data-mode="hallucination">mode: hallucination</span>
+  <div id="mode-label">
+    <span class="ml" data-m="human">human</span>
+    <span class="ml" data-m="machine">machine</span>
+    <span class="ml" data-m="glitch">hallucination</span>
   </div>
 
-  <!-- Confidence display -->
-  <div id="confidence-bar"></div>
+  <div id="cam"><video id="webcam" autoplay playsinline></video></div>
+  <div id="counter">01 / 05</div>
+  <div id="dots"></div>
 
-  <!-- Key hint -->
-  <div id="key-hint">
-    [1] machine<br>
-    [2] human<br>
-    [3] hallucination<br>
-    [↑↓] navigate
-  </div>
+  <!-- ===== MOMENT 1: INSTINCT ===== -->
+  <div class="moment active" data-i="0">
+    <div class="moment-bg">
+      <img src="images/Childhood/DSC_0295.JPG" alt="childhood creativity">
+    </div>
+    <div class="moment-dim"></div>
 
-  <!-- System status -->
-  <div id="system-status">
-    <span id="status-line-1">perception_engine: active</span><br>
-    <span id="status-line-2">frame: 0</span><br>
-    <span id="status-line-3">mode_stability: 100%</span>
-  </div>
+    <div class="human-layer">
+      <div class="h-title">I create because I have always been curious</div>
+      <div class="h-body">Before I knew what design was, I was painting on every surface, rapping about science at school, turning nothing into something just to see what would happen.</div>
+      <div class="h-sub">this is how I naturally think</div>
+    </div>
 
-  <!-- Scroll prompt -->
-  <div id="scroll-prompt">↑ ↓ scroll through moments</div>
+    <div class="associations">
+      <!-- REPLACE: real associated images -->
+      <div class="assoc"><div class="ap">family</div></div>
+      <div class="assoc"><div class="ap">paint</div></div>
+      <div class="assoc"><div class="ap">play</div></div>
+    </div>
 
-  <!-- Moment navigation dots -->
-  <div id="moment-nav"></div>
-
-  <!-- ============================================
-       CONTENT STAGE: 6 MOMENTS
-       ============================================ -->
-  <div id="content-stage">
-
-    <!-- ===== MOMENT 1: CHILDHOOD CREATIVITY ===== -->
-    <div class="moment active" data-moment="0">
-      <div class="moment-inner">
-        <div class="moment-visual">
-          <div class="moment-visual-inner">
-            <div class="visual-placeholder" data-moment-id="1">
-              <!-- REPLACE: Add your image here
-                   Example: <img class="placeholder-img" src="images/childhood.jpg" alt="Childhood creativity">
-                   Or use a video: <video class="placeholder-img" src="videos/childhood.mp4" autoplay muted loop></video> -->
-              <canvas class="generated-visual" id="gen-visual-1"></canvas>
-            </div>
-            <div class="machine-overlay">
-              <div class="bounding-box"></div>
-              <div class="corner-tr"></div>
-              <div class="corner-bl"></div>
-              <div class="scan-line"></div>
-              <div class="label-tag">SUBJECT_01 — EARLY_MEMORY</div>
-            </div>
-            <div class="human-overlay">
-              <div class="glow-border"></div>
-            </div>
-          </div>
-        </div>
-        <div class="moment-divider"></div>
-        <div class="moment-text">
-          <div class="moment-index">moment 01 — origin</div>
-
-          <div class="text-machine">
-            <span class="data-line"><span class="data-key">subject_age_range: </span><span class="data-value">child</span></span>
-            <span class="data-line"><span class="data-key">behavior_cluster: </span><span class="data-value">expressive</span></span>
-            <span class="data-line"><span class="data-key">activities: </span><span class="data-value">[painting, performance, experimentation]</span></span>
-            <span class="data-line"><span class="data-key">environment: </span><span class="data-value">domestic</span></span>
-            <span class="data-line"><span class="data-key">creative_index: </span><span class="data-value">high</span></span>
-            <span class="data-line"><span class="data-key">pattern: </span><span class="data-value">curiosity → creation → expression</span></span>
-            <span class="data-line confidence">confidence: 84.3%</span>
-          </div>
-
-          <div class="text-human">
-            I always knew I was meant for an expressive field. I was the kind of kid who would turn curiosity into performance, play, and experiments.
-            <span class="human-subtext">painting on every surface, rapping about science at school, turning nothing into something just to see what would happen</span>
-          </div>
-
-          <div class="text-hallucination">
-            <span class="glitch-line">I was the kind of kid who—</span>
-            <span class="glitch-line">subject_age_range: undefined</span>
-            <span class="glitch-line">curiosity cannot be indexed</span>
-            <span class="glitch-line">behavior_cluster: [OVERFLOW]</span>
-            <span class="glitch-line">painting on every surface</span>
-            <span class="glitch-line">confidence: 12%</span>
-            <span class="glitch-line">memory not found</span>
-            <span class="glitch-line">the machine sees a child</span>
-            <span class="glitch-line">I see the beginning of everything</span>
-          </div>
-        </div>
+    <div class="machine-layer">
+      <div class="m-bbox"></div>
+      <div class="m-corner-tr"></div><div class="m-corner-bl"></div>
+      <div class="m-sweep"></div>
+      <div class="m-label">SUBJECT — EARLY_MEMORY</div>
+      <div class="m-conf">84.3%</div>
+      <div class="m-data">
+        <span class="mk">subject_age: </span><span class="mv">child</span><br>
+        <span class="mk">behavior_cluster: </span><span class="mv">expressive</span><br>
+        <span class="mk">activities: </span><span class="mv">[painting, performance, experimentation]</span><br>
+        <span class="mk">creative_index: </span><span class="mv">high</span><br>
+        <span class="mk">pattern: </span><span class="mv">curiosity → creation → expression</span>
+        <span class="mc">confidence: 84.3% | source: memory_archive</span>
       </div>
     </div>
 
-    <!-- ===== MOMENT 2: COMMUNICATION DESIGN ===== -->
-    <div class="moment" data-moment="1">
-      <div class="moment-inner">
-        <div class="moment-visual">
-          <div class="moment-visual-inner">
-            <div class="visual-placeholder" data-moment-id="2">
-              <!-- REPLACE: Add your image for Communication Design -->
-              <canvas class="generated-visual" id="gen-visual-2"></canvas>
-            </div>
-            <div class="machine-overlay">
-              <div class="bounding-box"></div>
-              <div class="corner-tr"></div>
-              <div class="corner-bl"></div>
-              <div class="scan-line"></div>
-              <div class="label-tag">SUBJECT_02 — DESIGN_EDUCATION</div>
-            </div>
-            <div class="human-overlay">
-              <div class="glow-border"></div>
-            </div>
-          </div>
-        </div>
-        <div class="moment-divider"></div>
-        <div class="moment-text">
-          <div class="moment-index">moment 02 — language</div>
-
-          <div class="text-machine">
-            <span class="data-line"><span class="data-key">topic: </span><span class="data-value">design education</span></span>
-            <span class="data-line"><span class="data-key">subtopics: </span><span class="data-value">[visual systems, branding, interface]</span></span>
-            <span class="data-line"><span class="data-key">discipline: </span><span class="data-value">communication design</span></span>
-            <span class="data-line"><span class="data-key">mode_shift: </span><span class="data-value">art → design</span></span>
-            <span class="data-line"><span class="data-key">sentiment: </span><span class="data-value">reflective</span></span>
-            <span class="data-line"><span class="data-key">identity_formation: </span><span class="data-value">in progress</span></span>
-            <span class="data-line confidence">confidence: 79.1%</span>
-          </div>
-
-          <div class="text-human">
-            Communication Design gave me language, but it also made me question where expression ends and problem solving begins.
-            <span class="human-subtext">learning to shape ideas into systems, discovering that design is thinking made visible</span>
-          </div>
-
-          <div class="text-hallucination">
-            <span class="glitch-line">expression ends where—</span>
-            <span class="glitch-line">ERROR: boundary not found</span>
-            <span class="glitch-line">design is thinking made</span>
-            <span class="glitch-line">topic: [CORRUPTED]</span>
-            <span class="glitch-line">the system learned to speak</span>
-            <span class="glitch-line">sentiment: recursive</span>
-            <span class="glitch-line">but language was never enough</span>
-            <span class="glitch-line">confidence: collapsing</span>
-          </div>
-        </div>
+    <div class="glitch-layer">
+      <div class="glitch-text">
+        <span class="gl">I was the kind of kid who—</span>
+        <span class="gl">subject_age: undefined</span>
+        <span class="gl">curiosity cannot be indexed</span>
+        <span class="gl">behavior_cluster: [OVERFLOW]</span>
+        <span class="gl">the machine sees a child</span>
+        <span class="gl">confidence: 12%</span>
+        <span class="gl">I see the beginning of everything</span>
       </div>
     </div>
-
-    <!-- ===== MOMENT 3: DELOITTE ===== -->
-    <div class="moment" data-moment="2">
-      <div class="moment-inner">
-        <div class="moment-visual">
-          <div class="moment-visual-inner">
-            <div class="visual-placeholder" data-moment-id="3">
-              <!-- REPLACE: Add your image for Deloitte experience -->
-              <canvas class="generated-visual" id="gen-visual-3"></canvas>
-            </div>
-            <div class="machine-overlay">
-              <div class="bounding-box"></div>
-              <div class="corner-tr"></div>
-              <div class="corner-bl"></div>
-              <div class="scan-line"></div>
-              <div class="label-tag">SUBJECT_03 — ENTERPRISE_CONTEXT</div>
-            </div>
-            <div class="human-overlay">
-              <div class="glow-border"></div>
-            </div>
-          </div>
-        </div>
-        <div class="moment-divider"></div>
-        <div class="moment-text">
-          <div class="moment-index">moment 03 — structure</div>
-
-          <div class="text-machine">
-            <span class="data-line"><span class="data-key">employment_type: </span><span class="data-value">product designer</span></span>
-            <span class="data-line"><span class="data-key">industry_context: </span><span class="data-value">enterprise consulting</span></span>
-            <span class="data-line"><span class="data-key">client_region: </span><span class="data-value">United States</span></span>
-            <span class="data-line"><span class="data-key">output_mode: </span><span class="data-value">structured delivery</span></span>
-            <span class="data-line"><span class="data-key">scale: </span><span class="data-value">large</span></span>
-            <span class="data-line"><span class="data-key">personal_alignment: </span><span class="data-value">partial</span></span>
-            <span class="data-line confidence">confidence: 91.7%</span>
-          </div>
-
-          <div class="text-human">
-            Deloitte taught me structure, scale, and discipline, but it also showed me the limits of work that does not feel personal.
-            <span class="human-subtext">building things that mattered to systems, wondering if they could also matter to people</span>
-          </div>
-
-          <div class="text-hallucination">
-            <span class="glitch-line">structure, scale, and—</span>
-            <span class="glitch-line">personal_alignment: ERROR</span>
-            <span class="glitch-line">the machine thrived here</span>
-            <span class="glitch-line">output_mode: delivery delivery delivery</span>
-            <span class="glitch-line">I was disappearing into the system</span>
-            <span class="glitch-line">client_region: everywhere and nowhere</span>
-            <span class="glitch-line">confidence: 91.7%</span>
-            <span class="glitch-line">but confidence in what?</span>
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <!-- ===== MOMENT 4: SHORT FILM ===== -->
-    <div class="moment" data-moment="3">
-      <div class="moment-inner">
-        <div class="moment-visual">
-          <div class="moment-visual-inner">
-            <div class="visual-placeholder" data-moment-id="4">
-              <!-- REPLACE: Add your image/video for the short film -->
-              <canvas class="generated-visual" id="gen-visual-4"></canvas>
-            </div>
-            <div class="machine-overlay">
-              <div class="bounding-box"></div>
-              <div class="corner-tr"></div>
-              <div class="corner-bl"></div>
-              <div class="scan-line"></div>
-              <div class="label-tag">ARTIFACT_04 — SELF_INITIATED</div>
-            </div>
-            <div class="human-overlay">
-              <div class="glow-border"></div>
-            </div>
-          </div>
-        </div>
-        <div class="moment-divider"></div>
-        <div class="moment-text">
-          <div class="moment-index">moment 04 — turning point</div>
-
-          <div class="text-machine">
-            <span class="data-line"><span class="data-key">artifact_type: </span><span class="data-value">short film</span></span>
-            <span class="data-line"><span class="data-key">purpose: </span><span class="data-value">self initiated</span></span>
-            <span class="data-line"><span class="data-key">themes: </span><span class="data-value">[identity, introspection, transition]</span></span>
-            <span class="data-line"><span class="data-key">production_mode: </span><span class="data-value">independent</span></span>
-            <span class="data-line"><span class="data-key">impact_score: </span><span class="data-value">unresolved</span></span>
-            <span class="data-line"><span class="data-key">trajectory_change: </span><span class="data-value">significant</span></span>
-            <span class="data-line confidence">confidence: 67.2%</span>
-          </div>
-
-          <div class="text-human">
-            The short film was the first time I felt my work and my inner life align. It did not feel like work. It felt like becoming free.
-            <span class="human-subtext">everything before was preparation, everything after was purpose</span>
-          </div>
-
-          <div class="text-hallucination">
-            <span class="glitch-line">it felt like becoming—</span>
-            <span class="glitch-line">impact_score: cannot be measured</span>
-            <span class="glitch-line">the system cannot classify freedom</span>
-            <span class="glitch-line">themes: [identity, identity, identity]</span>
-            <span class="glitch-line">I stopped performing for the machine</span>
-            <span class="glitch-line">trajectory_change: irreversible</span>
-            <span class="glitch-line">render failure</span>
-            <span class="glitch-line">some things do not have confidence scores</span>
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <!-- ===== MOMENT 5: PARSONS ===== -->
-    <div class="moment" data-moment="4">
-      <div class="moment-inner">
-        <div class="moment-visual">
-          <div class="moment-visual-inner">
-            <div class="visual-placeholder" data-moment-id="5">
-              <!-- REPLACE: Add your image for Parsons -->
-              <canvas class="generated-visual" id="gen-visual-5"></canvas>
-            </div>
-            <div class="machine-overlay">
-              <div class="bounding-box"></div>
-              <div class="corner-tr"></div>
-              <div class="corner-bl"></div>
-              <div class="scan-line"></div>
-              <div class="label-tag">SUBJECT_05 — INSTITUTION_PARSONS</div>
-            </div>
-            <div class="human-overlay">
-              <div class="glow-border"></div>
-            </div>
-          </div>
-        </div>
-        <div class="moment-divider"></div>
-        <div class="moment-text">
-          <div class="moment-index">moment 05 — expansion</div>
-
-          <div class="text-machine">
-            <span class="data-line"><span class="data-key">institution: </span><span class="data-value">Parsons School of Design</span></span>
-            <span class="data-line"><span class="data-key">program: </span><span class="data-value">MFA Design and Technology</span></span>
-            <span class="data-line"><span class="data-key">focus_areas: </span><span class="data-value">[AI, XR, interaction, perception]</span></span>
-            <span class="data-line"><span class="data-key">trajectory_shift: </span><span class="data-value">confirmed</span></span>
-            <span class="data-line"><span class="data-key">medium_expansion: </span><span class="data-value">significant</span></span>
-            <span class="data-line"><span class="data-key">worldview: </span><span class="data-value">restructured</span></span>
-            <span class="data-line confidence">confidence: 88.5%</span>
-          </div>
-
-          <div class="text-human">
-            Parsons became a place where technology stopped being just a tool and became a medium for questioning perception, selfhood, and experience.
-            <span class="human-subtext">learning to build things that think, that see, that ask questions I had not thought to ask</span>
-          </div>
-
-          <div class="text-hallucination">
-            <span class="glitch-line">technology stopped being—</span>
-            <span class="glitch-line">focus_areas: [EXPANDING...]</span>
-            <span class="glitch-line">perception, selfhood, and</span>
-            <span class="glitch-line">worldview: ERROR — cannot restructure from within</span>
-            <span class="glitch-line">the tools started asking questions back</span>
-            <span class="glitch-line">trajectory_shift: ongoing</span>
-            <span class="glitch-line">archive corrupted</span>
-            <span class="glitch-line">who is perceiving whom?</span>
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <!-- ===== MOMENT 6: PRESENT IDENTITY ===== -->
-    <div class="moment" data-moment="5">
-      <div class="moment-inner">
-        <div class="moment-visual">
-          <div class="moment-visual-inner">
-            <div class="visual-placeholder" data-moment-id="6">
-              <!-- REPLACE: Add your image for present identity -->
-              <canvas class="generated-visual" id="gen-visual-6"></canvas>
-            </div>
-            <div class="machine-overlay">
-              <div class="bounding-box"></div>
-              <div class="corner-tr"></div>
-              <div class="corner-bl"></div>
-              <div class="scan-line"></div>
-              <div class="label-tag">PROFILE_06 — CURRENT_STATE</div>
-            </div>
-            <div class="human-overlay">
-              <div class="glow-border"></div>
-            </div>
-          </div>
-        </div>
-        <div class="moment-divider"></div>
-        <div class="moment-text">
-          <div class="moment-index">moment 06 — now</div>
-
-          <div class="text-machine">
-            <span class="data-line"><span class="data-key">creator_profile: </span><span class="data-value">interdisciplinary</span></span>
-            <span class="data-line"><span class="data-key">current_interests: </span><span class="data-value">[AI systems, storytelling, immersion]</span></span>
-            <span class="data-line"><span class="data-key">predicted_output: </span><span class="data-value">reflective experiences</span></span>
-            <span class="data-line"><span class="data-key">medium: </span><span class="data-value">emerging technology</span></span>
-            <span class="data-line"><span class="data-key">intent: </span><span class="data-value">bridge perception and feeling</span></span>
-            <span class="data-line"><span class="data-key">trajectory: </span><span class="data-value">open</span></span>
-            <span class="data-line confidence">confidence: 73.8%</span>
-          </div>
-
-          <div class="text-human">
-            What I love most is building experiences that let people feel, question, and see themselves differently.
-            <span class="human-subtext">I want to make work that sits between the machine and the soul, where technology becomes a mirror</span>
-          </div>
-
-          <div class="text-hallucination">
-            <span class="glitch-line">what I love most is—</span>
-            <span class="glitch-line">predicted_output: UNPREDICTABLE</span>
-            <span class="glitch-line">you cannot classify what you have not lived</span>
-            <span class="glitch-line">intent: bridge perception and ████████</span>
-            <span class="glitch-line">the system is the mirror</span>
-            <span class="glitch-line">confidence: undefined</span>
-            <span class="glitch-line">perception failed</span>
-            <span class="glitch-line">meaning cannot be reduced</span>
-            <span class="glitch-line">system hallucinating</span>
-          </div>
-        </div>
-      </div>
-    </div>
-
-  </div><!-- /content-stage -->
-
-  <!-- Hallucination overlay effects -->
-  <div id="hallucination-overlay">
-    <div class="h-bar"></div>
-    <div class="chromatic"></div>
-    <div class="static-noise"></div>
   </div>
 
-  <!-- Mode transition flash -->
-  <div class="mode-transition-flash" id="transition-flash"></div>
+  <!-- ===== MOMENT 2: STRUCTURE ===== -->
+  <div class="moment" data-i="1">
+    <div class="moment-bg">
+      <!-- REPLACE: <img src="images/design.jpg" alt=""> -->
+      <div class="ph ph2">[ design training — systems, typography, branding ]</div>
+    </div>
+    <div class="moment-dim"></div>
 
-  <!-- Final hallucination end message -->
-  <div id="final-message">
-    <p>perception failed</p>
-    <p>meaning cannot be reduced</p>
-    <p>system hallucinating</p>
+    <div class="human-layer">
+      <div class="h-title">I learned systems and problem solving</div>
+      <div class="h-body">Communication Design gave me language, but it also made me question where expression ends and problem solving begins.</div>
+      <div class="h-sub">design is thinking made visible</div>
+    </div>
+
+    <div class="associations">
+      <div class="assoc"><div class="ap">type</div></div>
+      <div class="assoc"><div class="ap">grid</div></div>
+      <div class="assoc"><div class="ap">brand</div></div>
+    </div>
+
+    <div class="machine-layer">
+      <div class="m-bbox"></div>
+      <div class="m-corner-tr"></div><div class="m-corner-bl"></div>
+      <div class="m-sweep"></div>
+      <div class="m-label">SUBJECT — DESIGN_EDUCATION</div>
+      <div class="m-conf">79.1%</div>
+      <div class="m-data">
+        <span class="mk">discipline: </span><span class="mv">communication design</span><br>
+        <span class="mk">mode_shift: </span><span class="mv">art → design</span><br>
+        <span class="mk">subtopics: </span><span class="mv">[visual systems, branding, interface]</span><br>
+        <span class="mk">sentiment: </span><span class="mv">reflective</span><br>
+        <span class="mk">identity_formation: </span><span class="mv">in progress</span>
+        <span class="mc">confidence: 79.1% | trajectory: emerging</span>
+      </div>
+    </div>
+
+    <div class="glitch-layer">
+      <div class="glitch-text">
+        <span class="gl">expression ends where—</span>
+        <span class="gl">ERROR: boundary not found</span>
+        <span class="gl">the system learned to speak</span>
+        <span class="gl">topic: [CORRUPTED]</span>
+        <span class="gl">but language was never enough</span>
+      </div>
+    </div>
   </div>
 
-  <!-- Webcam feed -->
-  <div id="webcam-container">
-    <video id="webcam" autoplay playsinline></video>
+  <!-- ===== MOMENT 3: CONFLICT (DELOITTE) ===== -->
+  <div class="moment" data-i="2">
+    <div class="moment-bg">
+      <!-- REPLACE: <img src="images/deloitte.jpg" alt=""> -->
+      <div class="ph ph3">[ enterprise — structure, scale, constraint ]</div>
+    </div>
+    <div class="moment-dim"></div>
+
+    <div class="human-layer">
+      <div class="h-title">I learned structure, but something felt missing</div>
+      <div class="h-body">Deloitte taught me scale and discipline, but it also showed me the limits of work that does not feel personal.</div>
+      <div class="h-sub">building for systems, wondering about people</div>
+    </div>
+
+    <div class="associations">
+      <div class="assoc"><div class="ap">product</div></div>
+      <div class="assoc"><div class="ap">system</div></div>
+      <div class="assoc"><div class="ap">scale</div></div>
+    </div>
+
+    <div class="machine-layer">
+      <div class="m-bbox"></div>
+      <div class="m-corner-tr"></div><div class="m-corner-bl"></div>
+      <div class="m-sweep"></div>
+      <div class="m-label">SUBJECT — ENTERPRISE</div>
+      <div class="m-conf">91.7%</div>
+      <div class="m-data">
+        <span class="mk">employment: </span><span class="mv">product designer</span><br>
+        <span class="mk">industry: </span><span class="mv">enterprise consulting</span><br>
+        <span class="mk">client_region: </span><span class="mv">United States</span><br>
+        <span class="mk">output_mode: </span><span class="mv">structured delivery</span><br>
+        <span class="mk">personal_alignment: </span><span class="mv">partial</span>
+        <span class="mc">confidence: 91.7% | the machine thrived here</span>
+      </div>
+    </div>
+
+    <div class="glitch-layer">
+      <div class="glitch-text">
+        <span class="gl">I was disappearing into the system</span>
+        <span class="gl">output_mode: delivery delivery delivery</span>
+        <span class="gl">confidence: 91.7%</span>
+        <span class="gl">personal_alignment: ERROR</span>
+        <span class="gl">but confidence in what?</span>
+      </div>
+    </div>
   </div>
 
-</div><!-- /experience -->
+  <!-- ===== MOMENT 4: SHIFT (SHORT FILM) ===== -->
+  <div class="moment" data-i="3">
+    <div class="moment-bg">
+      <!-- REPLACE: <img src="images/film.jpg" alt=""> or <video src="film-clip.mp4" autoplay muted loop> -->
+      <div class="ph ph4">[ short film — identity, introspection, turning point ]</div>
+    </div>
+    <div class="moment-dim"></div>
+
+    <div class="human-layer">
+      <div class="h-title">This changed everything</div>
+      <div class="h-body">The short film was the first time I felt my work and my inner life align. It did not feel like work. It felt like becoming free.</div>
+      <div class="h-sub">everything before was preparation, everything after was purpose</div>
+    </div>
+
+    <div class="associations">
+      <div class="assoc"><div class="ap">cinema</div></div>
+      <div class="assoc"><div class="ap">light</div></div>
+      <div class="assoc"><div class="ap">self</div></div>
+    </div>
+
+    <div class="machine-layer">
+      <div class="m-bbox"></div>
+      <div class="m-corner-tr"></div><div class="m-corner-bl"></div>
+      <div class="m-sweep"></div>
+      <div class="m-label">ARTIFACT — SELF_INITIATED</div>
+      <div class="m-conf">67.2%</div>
+      <div class="m-data">
+        <span class="mk">artifact_type: </span><span class="mv">short film</span><br>
+        <span class="mk">purpose: </span><span class="mv">self initiated</span><br>
+        <span class="mk">themes: </span><span class="mv">[identity, introspection, transition]</span><br>
+        <span class="mk">impact_score: </span><span class="mv">unresolved</span><br>
+        <span class="mk">trajectory_change: </span><span class="mv">significant</span>
+        <span class="mc">confidence: 67.2% | the system cannot classify freedom</span>
+      </div>
+    </div>
+
+    <div class="glitch-layer">
+      <div class="glitch-text">
+        <span class="gl">it felt like becoming—</span>
+        <span class="gl">impact_score: cannot be measured</span>
+        <span class="gl">I stopped performing for the machine</span>
+        <span class="gl">trajectory_change: irreversible</span>
+        <span class="gl">some things do not have confidence scores</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== MOMENT 5: NOW (PARSONS + IDENTITY) ===== -->
+  <div class="moment" data-i="4">
+    <div class="moment-bg">
+      <!-- REPLACE: <img src="images/now.jpg" alt=""> -->
+      <div class="ph ph5">[ now — AI, XR, perception, emerging media ]</div>
+    </div>
+    <div class="moment-dim"></div>
+
+    <div class="human-layer">
+      <div class="h-title">I now build experiences that explore meaning</div>
+      <div class="h-body">What I love most is building experiences that let people feel, question, and see themselves differently. Technology became a medium, not just a tool.</div>
+      <div class="h-sub">a life cannot be reduced to data</div>
+    </div>
+
+    <div class="associations">
+      <div class="assoc"><div class="ap">AI</div></div>
+      <div class="assoc"><div class="ap">XR</div></div>
+      <div class="assoc"><div class="ap">mirror</div></div>
+      <div class="assoc"><div class="ap">golden record</div></div>
+    </div>
+
+    <div class="machine-layer">
+      <div class="m-bbox"></div>
+      <div class="m-corner-tr"></div><div class="m-corner-bl"></div>
+      <div class="m-sweep"></div>
+      <div class="m-label">PROFILE — CURRENT_STATE</div>
+      <div class="m-conf">73.8%</div>
+      <div class="m-data">
+        <span class="mk">creator_profile: </span><span class="mv">interdisciplinary</span><br>
+        <span class="mk">current_interests: </span><span class="mv">[AI, XR, storytelling, immersion]</span><br>
+        <span class="mk">predicted_output: </span><span class="mv">reflective experiences</span><br>
+        <span class="mk">intent: </span><span class="mv">bridge perception and feeling</span><br>
+        <span class="mk">trajectory: </span><span class="mv">open</span>
+        <span class="mc">confidence: 73.8% | meaning cannot be reduced</span>
+      </div>
+    </div>
+
+    <div class="glitch-layer">
+      <div class="glitch-text">
+        <span class="gl">you cannot classify what you have not lived</span>
+        <span class="gl">predicted_output: UNPREDICTABLE</span>
+        <span class="gl">the system is the mirror</span>
+        <span class="gl">confidence: undefined</span>
+        <span class="gl">perception failed</span>
+        <span class="gl">meaning cannot be reduced</span>
+        <span class="gl">system hallucinating</span>
+      </div>
+    </div>
+  </div>
+
+</div><!-- /stage -->
 
 <script>
 // ============================================
-// CONFIGURATION
+// CONFIG — model loads locally now
 // ============================================
+const MODEL_URL = './model/';
 
-// ========== TEACHABLE MACHINE MODEL URL ==========
-// REPLACE: Paste your Teachable Machine model URL here
-// Export your model from https://teachablemachine.withgoogle.com
-// and paste the URL below. The URL should end with /model.json
-const MODEL_URL = 'https://teachablemachine.withgoogle.com/models/[...]/';
-// Example: const MODEL_URL = 'https://teachablemachine.withgoogle.com/models/XXXXX/';
-
-// ========== CONFIDENCE THRESHOLDS ==========
-// TUNE: Adjust these thresholds based on your model's behavior
-const THRESHOLDS = {
-  hallucination: 0.55,  // Hallucination confidence needed to trigger
-  human: 0.60,          // Human confidence needed to trigger
-  machine: 0.30,        // Machine is default, needs low threshold
-};
-
-// ========== DEBOUNCE TIMING ==========
-// TUNE: How long (ms) a mode must be dominant before switching
-const DEBOUNCE_MS = 700;
-
-// ========== CLASS NAME MAPPING ==========
-// CONFIGURE: Map your Teachable Machine class names to modes
-// Your Teachable Machine model should have 3 classes.
-// Set the names exactly as they appear in your TM model.
+// Class names from YOUR model
 const CLASS_MAP = {
-  'Machine': 'machine',       // Class 1: neutral face
-  'Human': 'human',           // Class 2: smiling/expressive face
-  'Hallucination': 'hallucination', // Class 3: hand over face
+  'Human': 'human',
+  'Machine': 'machine',
+  'Glitch': 'glitch',
 };
+
+const THRESHOLDS = { glitch:0.55, human:0.60, machine:0.30 };
+const DEBOUNCE_MS = 700;
 
 // ============================================
 // STATE
 // ============================================
-let currentMode = 'machine';
-let pendingMode = 'machine';
-let pendingStart = 0;
-let currentMoment = 0;
-const totalMoments = 6;
+let mode = 'human';
+let pending = 'human';
+let pendingT = 0;
+let cur = 0;
+const total = 5;
 let model = null;
-let webcamElement = null;
-let frameCount = 0;
-let isBooted = false;
-let hallucinationTimer = 0;
-let usingKeyboard = false;
+let camEl = null;
+let live = false;
 
 // ============================================
-// BOOT SEQUENCE
+// INTRO
 // ============================================
-function runBootSequence() {
-  const lines = document.querySelectorAll('#boot-text .line');
-
-  lines.forEach((line, i) => {
-    const delay = parseInt(line.dataset.delay) || (i * 800);
+function runIntro(){
+  const lines = document.querySelectorAll('.intro-line');
+  lines.forEach(l => {
+    const d = parseInt(l.dataset.d);
     setTimeout(() => {
-      // Mark previous lines as done
-      lines.forEach((prev, j) => {
-        if (j < i) {
-          prev.classList.remove('active');
-          prev.classList.add('done');
-        }
-      });
-      line.classList.add('visible', 'active');
-    }, delay);
+      lines.forEach(p => { if(p !== l && p.classList.contains('show')) p.classList.add('fade') });
+      l.classList.add('show');
+    }, d);
   });
-
-  // After boot, start experience
-  const totalBootTime = 6800;
   setTimeout(() => {
-    document.getElementById('boot-screen').classList.add('fade-out');
+    document.getElementById('intro').classList.add('done');
     setTimeout(() => {
-      document.getElementById('boot-screen').style.display = 'none';
-      document.getElementById('experience').classList.add('active');
-      isBooted = true;
-      initWebcam();
-    }, 1000);
-  }, totalBootTime);
+      document.getElementById('intro').style.display = 'none';
+      document.getElementById('instructions').classList.add('show');
+    }, 1500);
+  }, 11000);
 }
 
 // ============================================
-// WEBCAM + MODEL INITIALIZATION
+// BEGIN
 // ============================================
-async function initWebcam() {
-  webcamElement = document.getElementById('webcam');
+document.getElementById('begin-btn').addEventListener('click', () => {
+  const instr = document.getElementById('instructions');
+  instr.classList.remove('show');
+  setTimeout(() => {
+    instr.style.display = 'none';
+    document.getElementById('stage').classList.add('live');
+    live = true;
+    buildDots();
+    initCam();
+  }, 800);
+});
 
+// ============================================
+// WEBCAM + MODEL
+// ============================================
+async function initCam(){
+  camEl = document.getElementById('webcam');
   try {
-    const stream = await navigator.mediaDevices.getUserMedia({
-      video: { facingMode: 'user', width: 320, height: 240 }
-    });
-    webcamElement.srcObject = stream;
-    await webcamElement.play();
-
-    // Try to load the Teachable Machine model
-    if (MODEL_URL !== 'YOUR_MODEL_URL_HERE/') {
-      await loadModel();
-    } else {
-      console.log('No Teachable Machine model URL set. Use keyboard controls: 1=Machine, 2=Human, 3=Hallucination');
-      updateStatus('model: not loaded — keyboard mode');
-    }
-  } catch (err) {
-    console.warn('Webcam access denied or unavailable. Using keyboard controls.', err);
-    document.getElementById('webcam-container').style.opacity = '0.2';
-    updateStatus('webcam: denied — keyboard mode');
-  }
-}
-
-async function loadModel() {
-  try {
-    const modelURL = MODEL_URL + 'model.json';
-    const metadataURL = MODEL_URL + 'metadata.json';
-    model = await tmImage.load(modelURL, metadataURL);
-    console.log('Teachable Machine model loaded. Classes:', model.getClassLabels());
-    updateStatus('model: loaded');
-    startPredictionLoop();
-  } catch (err) {
-    console.error('Failed to load model:', err);
-    updateStatus('model: load failed — keyboard mode');
-  }
-}
-
-// ============================================
-// PREDICTION LOOP
-// ============================================
-function startPredictionLoop() {
-  async function predict() {
-    if (!model || !webcamElement || usingKeyboard) {
-      requestAnimationFrame(predict);
-      return;
-    }
-
+    const stream = await navigator.mediaDevices.getUserMedia({video:{facingMode:'user',width:320,height:240}});
+    camEl.srcObject = stream;
+    await camEl.play();
     try {
-      const predictions = await model.predict(webcamElement);
+      model = await tmImage.load(MODEL_URL+'model.json', MODEL_URL+'metadata.json');
+      console.log('Model loaded:', model.getClassLabels());
+      predict();
+    } catch(e){ console.error('Model error:', e) }
+  } catch(e){
+    console.warn('No webcam:', e);
+    document.getElementById('cam').style.opacity='0.05';
+  }
+}
 
-      // Map predictions to our mode names
-      let mapped = {};
-      predictions.forEach(p => {
-        const modeName = CLASS_MAP[p.className];
-        if (modeName) {
-          mapped[modeName] = p.probability;
-        }
-      });
+// ============================================
+// PREDICTION
+// ============================================
+function predict(){
+  if(!model||!camEl){requestAnimationFrame(predict);return}
+  model.predict(camEl).then(preds => {
+    let m = {};
+    preds.forEach(p => { const k = CLASS_MAP[p.className]; if(k) m[k]=p.probability; });
 
-      // Update confidence display
-      updateConfidenceDisplay(mapped);
+    let target = 'machine';
+    if(m.glitch >= THRESHOLDS.glitch) target='glitch';
+    else if(m.human >= THRESHOLDS.human && m.human > (m.machine||0)) target='human';
 
-      // Determine target mode with priority logic
-      let targetMode = 'machine'; // default
-
-      if (mapped.hallucination && mapped.hallucination >= THRESHOLDS.hallucination) {
-        targetMode = 'hallucination';
-      } else if (mapped.human && mapped.human >= THRESHOLDS.human &&
-                 (!mapped.machine || mapped.human > mapped.machine)) {
-        targetMode = 'human';
-      } else {
-        targetMode = 'machine';
-      }
-
-      // Debounce logic
-      const now = Date.now();
-      if (targetMode !== pendingMode) {
-        pendingMode = targetMode;
-        pendingStart = now;
-      } else if (targetMode !== currentMode && (now - pendingStart) >= DEBOUNCE_MS) {
-        switchMode(targetMode);
-      }
-    } catch (err) {
-      // Silently continue
-    }
+    const now = Date.now();
+    if(target !== pending){ pending=target; pendingT=now; }
+    else if(target !== mode && (now-pendingT) >= DEBOUNCE_MS) setMode(target);
 
     requestAnimationFrame(predict);
-  }
-
-  requestAnimationFrame(predict);
+  }).catch(() => requestAnimationFrame(predict));
 }
 
 // ============================================
-// MODE SWITCHING
+// MODE
 // ============================================
-function switchMode(newMode) {
-  if (newMode === currentMode) return;
-
-  const experience = document.getElementById('experience');
-  const flash = document.getElementById('transition-flash');
-
-  // Remove old mode class
-  experience.classList.remove(`mode-${currentMode}`);
-
-  // Flash effect
-  flash.classList.remove('flash');
-  void flash.offsetWidth; // reflow
-  flash.classList.add('flash');
-
-  // Set new mode
-  currentMode = newMode;
-  experience.classList.add(`mode-${currentMode}`);
-
-  // Update mode labels
-  document.querySelectorAll('.mode-label').forEach(label => {
-    label.classList.toggle('active', label.dataset.mode === currentMode);
-  });
-
-  // Hallucination timer for final message
-  if (currentMode === 'hallucination') {
-    hallucinationTimer = Date.now();
-  } else {
-    hallucinationTimer = 0;
-    document.getElementById('final-message').classList.remove('visible');
-  }
-
-  // Update system status
-  updateStatus(`mode_switch: → ${currentMode}`);
-
-  // ========== SOUND HOOKS ==========
-  // SOUND: Uncomment and implement to play mode transition sounds
-  // playModeSound(currentMode);
+function setMode(m){
+  if(m===mode) return;
+  const s = document.getElementById('stage');
+  s.classList.remove('mode-'+mode);
+  mode = m;
+  s.classList.add('mode-'+mode);
+  document.querySelectorAll('.ml').forEach(l => l.classList.toggle('on', l.dataset.m===mode));
 }
 
 // ============================================
-// CONFIDENCE DISPLAY
+// NAVIGATION
 // ============================================
-function updateConfidenceDisplay(mapped) {
-  const bar = document.getElementById('confidence-bar');
-  if (!mapped || Object.keys(mapped).length === 0) return;
-
-  const lines = Object.entries(mapped).map(([mode, conf]) => {
-    const pct = (conf * 100).toFixed(1);
-    const active = mode === currentMode ? '►' : ' ';
-    return `${active} ${mode}: ${pct}%`;
-  }).join('  |  ');
-
-  bar.textContent = lines;
-}
-
-// ============================================
-// STATUS UPDATES
-// ============================================
-function updateStatus(msg) {
-  const line3 = document.getElementById('status-line-3');
-  if (line3) line3.textContent = msg;
-}
-
-// ============================================
-// MOMENT NAVIGATION
-// ============================================
-function createNavDots() {
-  const nav = document.getElementById('moment-nav');
-  for (let i = 0; i < totalMoments; i++) {
-    const dot = document.createElement('div');
-    dot.className = 'nav-dot' + (i === 0 ? ' active' : '');
-    dot.addEventListener('click', () => goToMoment(i));
-    nav.appendChild(dot);
+function buildDots(){
+  const c = document.getElementById('dots');
+  for(let i=0;i<total;i++){
+    const d = document.createElement('div');
+    d.className = 'dot'+(i===0?' on':'');
+    d.addEventListener('click', ()=>go(i));
+    c.appendChild(d);
   }
 }
 
-function goToMoment(index) {
-  if (index < 0 || index >= totalMoments || index === currentMoment) return;
-
-  const moments = document.querySelectorAll('.moment');
-  moments[currentMoment].classList.remove('active');
-  moments[index].classList.add('active');
-
-  const dots = document.querySelectorAll('.nav-dot');
-  dots[currentMoment].classList.remove('active');
-  dots[index].classList.add('active');
-
-  currentMoment = index;
-
-  // Update frame counter
-  frameCount++;
-  document.getElementById('status-line-2').textContent = `frame: ${frameCount}`;
+function go(i){
+  if(i<0||i>=total||i===cur) return;
+  document.querySelectorAll('.moment')[cur].classList.remove('active');
+  document.querySelectorAll('.moment')[i].classList.add('active');
+  document.querySelectorAll('.dot')[cur].classList.remove('on');
+  document.querySelectorAll('.dot')[i].classList.add('on');
+  cur = i;
+  document.getElementById('counter').textContent = `0${cur+1} / 0${total}`;
 }
 
-// ============================================
-// KEYBOARD CONTROLS
-// ============================================
-document.addEventListener('keydown', (e) => {
-  if (!isBooted) return;
-
-  switch (e.key) {
-    // ========== KEYBOARD FALLBACK: Mode switching ==========
-    case '1':
-      usingKeyboard = true;
-      switchMode('machine');
-      break;
-    case '2':
-      usingKeyboard = true;
-      switchMode('human');
-      break;
-    case '3':
-      usingKeyboard = true;
-      switchMode('hallucination');
-      break;
-    // Resume webcam mode
-    case '0':
-      usingKeyboard = false;
-      updateStatus('perception_engine: active');
-      break;
-    // Moment navigation
-    case 'ArrowDown':
-    case 'ArrowRight':
-      e.preventDefault();
-      goToMoment(currentMoment + 1);
-      break;
-    case 'ArrowUp':
-    case 'ArrowLeft':
-      e.preventDefault();
-      goToMoment(currentMoment - 1);
-      break;
-  }
+// Keyboard (dev) + scroll
+document.addEventListener('keydown', e => {
+  if(!live) return;
+  if(e.key==='1') setMode('machine');
+  if(e.key==='2') setMode('human');
+  if(e.key==='3') setMode('glitch');
+  if(e.key==='ArrowDown'||e.key==='ArrowRight'){e.preventDefault();go(cur+1)}
+  if(e.key==='ArrowUp'||e.key==='ArrowLeft'){e.preventDefault();go(cur-1)}
 });
 
-// Scroll/wheel navigation
-let scrollCooldown = false;
-document.addEventListener('wheel', (e) => {
-  if (!isBooted || scrollCooldown) return;
-  scrollCooldown = true;
-  setTimeout(() => { scrollCooldown = false; }, 800);
-
-  if (e.deltaY > 0) {
-    goToMoment(currentMoment + 1);
-  } else {
-    goToMoment(currentMoment - 1);
-  }
+let scrollLock = false;
+document.addEventListener('wheel', e => {
+  if(!live||scrollLock) return;
+  scrollLock=true; setTimeout(()=>scrollLock=false, 700);
+  go(e.deltaY>0 ? cur+1 : cur-1);
 });
 
 // ============================================
-// GENERATED PLACEHOLDER VISUALS
-// ============================================
-function generatePlaceholderVisuals() {
-  for (let i = 1; i <= totalMoments; i++) {
-    const canvas = document.getElementById(`gen-visual-${i}`);
-    if (!canvas) continue;
-
-    const ctx = canvas.getContext('2d');
-    canvas.width = 600;
-    canvas.height = 500;
-
-    // Each moment gets a unique generated visual
-    drawGeneratedVisual(ctx, i, canvas.width, canvas.height);
-  }
-}
-
-function drawGeneratedVisual(ctx, momentIndex, w, h) {
-  // Dark base
-  ctx.fillStyle = '#0a0a0a';
-  ctx.fillRect(0, 0, w, h);
-
-  // Unique visual per moment
-  const visuals = [
-    // Moment 1: scattered organic shapes (childhood creativity)
-    () => {
-      for (let i = 0; i < 40; i++) {
-        const x = Math.random() * w;
-        const y = Math.random() * h;
-        const r = Math.random() * 30 + 5;
-        const hue = Math.random() * 60 + 20;
-        ctx.beginPath();
-        ctx.arc(x, y, r, 0, Math.PI * 2);
-        ctx.fillStyle = `hsla(${hue}, 60%, 50%, 0.15)`;
-        ctx.fill();
-      }
-      // Center form
-      ctx.beginPath();
-      ctx.arc(w/2, h/2, 80, 0, Math.PI * 2);
-      ctx.fillStyle = 'rgba(255, 200, 100, 0.08)';
-      ctx.fill();
-      ctx.strokeStyle = 'rgba(255, 200, 100, 0.15)';
-      ctx.lineWidth = 1;
-      ctx.stroke();
-    },
-    // Moment 2: grid of type blocks (communication design)
-    () => {
-      ctx.strokeStyle = 'rgba(255,255,255,0.06)';
-      ctx.lineWidth = 1;
-      for (let x = 0; x < w; x += 60) {
-        for (let y = 0; y < h; y += 40) {
-          if (Math.random() > 0.4) {
-            ctx.strokeRect(x + 5, y + 5, 50, 30);
-          }
-        }
-      }
-      ctx.fillStyle = 'rgba(255,255,255,0.04)';
-      ctx.font = '120px serif';
-      ctx.fillText('Aa', w/2 - 80, h/2 + 40);
-    },
-    // Moment 3: rigid grid (enterprise structure)
-    () => {
-      ctx.strokeStyle = 'rgba(100, 200, 255, 0.06)';
-      ctx.lineWidth = 0.5;
-      for (let x = 0; x < w; x += 30) {
-        ctx.beginPath();
-        ctx.moveTo(x, 0);
-        ctx.lineTo(x, h);
-        ctx.stroke();
-      }
-      for (let y = 0; y < h; y += 30) {
-        ctx.beginPath();
-        ctx.moveTo(0, y);
-        ctx.lineTo(w, y);
-        ctx.stroke();
-      }
-      // Data blocks
-      for (let i = 0; i < 8; i++) {
-        const bx = 60 + Math.floor(Math.random() * 6) * 90;
-        const by = 60 + Math.floor(Math.random() * 5) * 90;
-        ctx.fillStyle = 'rgba(100, 200, 255, 0.04)';
-        ctx.fillRect(bx, by, 60, 60);
-      }
-    },
-    // Moment 4: cinematic frame (short film)
-    () => {
-      // Letterbox bars
-      ctx.fillStyle = '#000';
-      ctx.fillRect(0, 0, w, 60);
-      ctx.fillRect(0, h - 60, w, 60);
-      // Film grain
-      for (let i = 0; i < 3000; i++) {
-        const x = Math.random() * w;
-        const y = 60 + Math.random() * (h - 120);
-        const alpha = Math.random() * 0.1;
-        ctx.fillStyle = `rgba(255,255,255,${alpha})`;
-        ctx.fillRect(x, y, 1, 1);
-      }
-      // Center light
-      const grad = ctx.createRadialGradient(w/2, h/2, 0, w/2, h/2, 200);
-      grad.addColorStop(0, 'rgba(255, 220, 180, 0.06)');
-      grad.addColorStop(1, 'transparent');
-      ctx.fillStyle = grad;
-      ctx.fillRect(0, 0, w, h);
-    },
-    // Moment 5: neural network (Parsons/technology)
-    () => {
-      const nodes = [];
-      for (let i = 0; i < 25; i++) {
-        nodes.push({
-          x: 80 + Math.random() * (w - 160),
-          y: 80 + Math.random() * (h - 160)
-        });
-      }
-      // Connections
-      ctx.strokeStyle = 'rgba(180, 100, 255, 0.06)';
-      ctx.lineWidth = 0.5;
-      nodes.forEach((a, i) => {
-        nodes.forEach((b, j) => {
-          if (i < j && Math.random() > 0.6) {
-            ctx.beginPath();
-            ctx.moveTo(a.x, a.y);
-            ctx.lineTo(b.x, b.y);
-            ctx.stroke();
-          }
-        });
-      });
-      // Nodes
-      nodes.forEach(n => {
-        ctx.beginPath();
-        ctx.arc(n.x, n.y, 3, 0, Math.PI * 2);
-        ctx.fillStyle = 'rgba(180, 100, 255, 0.2)';
-        ctx.fill();
-      });
-    },
-    // Moment 6: convergence (present identity)
-    () => {
-      const cx = w / 2, cy = h / 2;
-      for (let i = 0; i < 6; i++) {
-        const r = 40 + i * 35;
-        ctx.beginPath();
-        ctx.arc(cx, cy, r, 0, Math.PI * 2);
-        ctx.strokeStyle = `rgba(255, 255, 255, ${0.03 + i * 0.01})`;
-        ctx.lineWidth = 0.5;
-        ctx.stroke();
-      }
-      // Radiating lines
-      for (let a = 0; a < Math.PI * 2; a += Math.PI / 8) {
-        ctx.beginPath();
-        ctx.moveTo(cx + Math.cos(a) * 40, cy + Math.sin(a) * 40);
-        ctx.lineTo(cx + Math.cos(a) * 250, cy + Math.sin(a) * 250);
-        ctx.strokeStyle = 'rgba(255, 255, 255, 0.03)';
-        ctx.stroke();
-      }
-    },
-  ];
-
-  visuals[momentIndex - 1]();
-}
-
-// ============================================
-// AMBIENT PARTICLES
-// ============================================
-function createParticles() {
-  const container = document.getElementById('particles');
-  for (let i = 0; i < 30; i++) {
-    const p = document.createElement('div');
-    p.className = 'particle';
-    p.style.left = `${Math.random() * 100}%`;
-    p.style.animationDuration = `${4 + Math.random() * 8}s`;
-    p.style.animationDelay = `${Math.random() * 5}s`;
-    p.style.opacity = Math.random() * 0.5;
-    container.appendChild(p);
-  }
-}
-
-// ============================================
-// HALLUCINATION END STATE
-// ============================================
-function checkHallucinationEndState() {
-  if (currentMode === 'hallucination' && hallucinationTimer > 0) {
-    const elapsed = Date.now() - hallucinationTimer;
-    // Show final message after 8 seconds of continuous hallucination
-    if (elapsed > 8000) {
-      document.getElementById('final-message').classList.add('visible');
-    }
-  }
-  requestAnimationFrame(checkHallucinationEndState);
-}
-
-// ============================================
-// ANIMATED DATA LINES (machine mode)
-// ============================================
-function animateDataLines() {
-  // Add staggered reveal to machine text lines
-  const activeMoment = document.querySelector('.moment.active');
-  if (!activeMoment) return;
-
-  const lines = activeMoment.querySelectorAll('.text-machine .data-line');
-  lines.forEach((line, i) => {
-    line.style.animationDelay = `${i * 0.15}s`;
-  });
-}
-
-// Re-animate on moment change
-const momentObserver = new MutationObserver(() => {
-  animateDataLines();
-});
-
-// ============================================
-// SOUND HOOKS (placeholder)
-// ============================================
-// SOUND: Implement your audio here
-// Example structure:
-//
-// const sounds = {
-//   machine: new Audio('sounds/machine-ambient.mp3'),
-//   human: new Audio('sounds/human-memory.mp3'),
-//   hallucination: new Audio('sounds/glitch-burst.mp3'),
-//   transition: new Audio('sounds/mode-switch.mp3'),
-// };
-//
-// function playModeSound(mode) {
-//   // Stop all sounds
-//   Object.values(sounds).forEach(s => { s.pause(); s.currentTime = 0; });
-//   // Play transition click
-//   sounds.transition.play();
-//   // Play ambient for current mode
-//   if (sounds[mode]) {
-//     sounds[mode].loop = true;
-//     sounds[mode].volume = 0.3;
-//     sounds[mode].play();
-//   }
-// }
-
-// ============================================
-// INITIALIZATION
+// INIT
 // ============================================
 document.addEventListener('DOMContentLoaded', () => {
-  // Set initial mode label
-  document.querySelector('.mode-label[data-mode="machine"]').classList.add('active');
-
-  // Create navigation dots
-  createNavDots();
-
-  // Create particles
-  createParticles();
-
-  // Generate placeholder visuals
-  generatePlaceholderVisuals();
-
-  // Start boot sequence
-  runBootSequence();
-
-  // Start hallucination end state checker
-  checkHallucinationEndState();
-
-  // Initial data line animation
-  setTimeout(animateDataLines, 7500);
+  document.querySelector('.ml[data-m="human"]').classList.add('on');
+  runIntro();
 });
 </script>
 
