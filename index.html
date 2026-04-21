@@ -4,832 +4,462 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Perception System</title>
-<script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@latest/dist/tf.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/@teachablemachine/image@latest/dist/teachablemachine-image.min.js"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@100;300;400&display=swap" rel="stylesheet">
 <style>
-@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500&family=Playfair+Display:ital,wght@0,400;0,500;0,700;1,400&family=Inter:wght@300;400;500&display=swap');
-
 *{margin:0;padding:0;box-sizing:border-box}
-html,body{width:100%;height:100%;overflow:hidden;background:#000;font-family:'Inter',sans-serif;color:#ddd}
+html,body{width:100%;height:100%;overflow:hidden;background:#000;font-family:'JetBrains Mono','Cascadia Mono','Fira Code',monospace}
 
-/* ===== SVG FILTERS ===== */
-.svg-filters{position:absolute;width:0;height:0}
+#crt{position:fixed;inset:0;z-index:9999;pointer-events:none}
+#crt::before{content:'';position:absolute;inset:0;background:repeating-linear-gradient(0deg,transparent,transparent 2px,rgba(0,0,0,0.012) 2px,rgba(0,0,0,0.012) 4px)}
+#crt::after{content:'';position:absolute;inset:0;background:radial-gradient(ellipse at center,transparent 30%,rgba(0,0,0,0.68) 100%)}
 
-/* ============================================
-   INTRO — cinematic, not a boot screen
-   ============================================ */
-#intro{
-  position:fixed;inset:0;z-index:2000;background:#000;
-  display:flex;align-items:center;justify-content:center;
-  transition:opacity 1.5s ease;
-}
-#intro.done{opacity:0;pointer-events:none}
+#flash{position:fixed;inset:0;z-index:8000;background:#fff;opacity:0;pointer-events:none}
+#danger{position:fixed;inset:0;z-index:200;background:radial-gradient(ellipse at center,rgba(195,12,4,0.20) 0%,rgba(135,4,0,0.05) 55%,transparent 100%);opacity:0;pointer-events:none}
 
-#intro-text{
-  text-align:center;max-width:600px;padding:0 40px;
+/* ── SCENE: two-column row ── */
+#scene{
+  position:fixed;inset:0;
+  display:flex;flex-direction:row;align-items:stretch;
+  opacity:0;transition:opacity 0.9s ease;
+  transform-origin:center 50%
 }
-.intro-line{
-  font-family:'Playfair Display',serif;
-  font-size:24px;line-height:1.9;color:#333;
-  opacity:0;transform:translateY(15px);
-  transition:opacity 1s ease,transform 1s ease,color 0.8s ease;
-  margin-bottom:8px;
+#scene.on{opacity:1}
+#scene.tvoff{animation:tvoff 4s linear forwards}
+@keyframes tvoff{
+  /* rapid squish to horizontal line */
+  0%   {transform:scaleY(1)     scaleX(1);    filter:brightness(1)   contrast(1)}
+  11%  {transform:scaleY(0.12)  scaleX(1.04); filter:brightness(2.8) contrast(1.6)}
+  /* bright line persists — the long CRT plateau */
+  18%  {transform:scaleY(0.038) scaleX(1.02); filter:brightness(6.5) contrast(2.2)}
+  38%  {transform:scaleY(0.028) scaleX(0.98); filter:brightness(6.0) contrast(2.0)}
+  58%  {transform:scaleY(0.016) scaleX(0.82); filter:brightness(4.5) contrast(1.5)}
+  /* line slowly dims and collapses to a dot */
+  74%  {transform:scaleY(0.007) scaleX(0.52); filter:brightness(3.0)}
+  85%  {transform:scaleY(0.003) scaleX(0.26); filter:brightness(1.8)}
+  93%  {transform:scaleY(0.001) scaleX(0.08); filter:brightness(1.0)}
+  100% {transform:scaleY(0)     scaleX(0);    filter:brightness(0)}
 }
-.intro-line.show{opacity:1;transform:translateY(0);color:#777}
-.intro-line.fade{color:#1a1a1a;opacity:0.4}
 
-/* ============================================
-   INSTRUCTIONS — brief, then gone
-   ============================================ */
-#instructions{
-  position:fixed;inset:0;z-index:1500;
-  background:rgba(0,0,0,0.95);
-  display:flex;align-items:center;justify-content:center;
-  opacity:0;pointer-events:none;transition:opacity 0.8s ease;
+/* ── LEFT: TERMINAL COLUMN ── */
+#term-col{
+  flex:0 0 58%;
+  display:flex;flex-direction:column;
+  background:#0c0c0c;
+  border-right:1px solid rgba(255,255,255,0.05)
 }
-#instructions.show{opacity:1;pointer-events:auto}
 
-.instr-inner{text-align:center;max-width:440px}
-.instr-inner h2{
-  font-family:'JetBrains Mono',monospace;font-size:10px;
-  letter-spacing:5px;text-transform:uppercase;color:#444;margin-bottom:40px;
+/* Windows 95-style title bar */
+#term-titlebar{
+  flex-shrink:0;height:28px;
+  background:linear-gradient(to right,#08306a,#1464c8);
+  display:flex;align-items:center;
+  padding:0 5px;gap:6px;
+  user-select:none
 }
-.instr-row{
-  display:flex;align-items:center;gap:16px;margin-bottom:24px;text-align:left;
+#ttl-icon{color:#fff;font-size:13px;line-height:1;opacity:0.85}
+#ttl-path{
+  flex:1;color:#fff;
+  font-size:11.5px;font-weight:300;letter-spacing:0.02em;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis
 }
-.instr-icon{
-  width:44px;height:44px;border-radius:50%;
-  border:1px solid rgba(255,255,255,0.08);
-  display:flex;align-items:center;justify-content:center;
-  font-size:18px;flex-shrink:0;
+#ttl-btns{display:flex;gap:2px;flex-shrink:0}
+.ttl-btn{
+  width:22px;height:18px;
+  background:#c0c0c0;
+  border:2px outset #d8d8d8;
+  color:#000;font-size:10px;font-weight:400;
+  cursor:default;display:flex;align-items:center;justify-content:center;
+  font-family:inherit
 }
-.instr-text{font-size:12px;line-height:1.6;color:#666}
-.instr-text strong{color:#aaa}
-#begin-btn{
-  margin-top:28px;padding:10px 28px;background:none;
-  border:1px solid rgba(255,255,255,0.1);color:#666;
-  font-family:'JetBrains Mono',monospace;font-size:9px;
-  letter-spacing:3px;text-transform:uppercase;cursor:pointer;
-  transition:all 0.3s ease;
-}
-#begin-btn:hover{border-color:rgba(255,255,255,0.3);color:#bbb}
 
-/* ============================================
-   MAIN STAGE — full screen, one moment at a time
-   ============================================ */
-#stage{
-  position:fixed;inset:0;opacity:0;
-  transition:opacity 1.2s ease;
+/* terminal body */
+#text-zone{
+  flex:1;
+  padding:18px 22px 22px;
+  overflow-y:auto;overflow-x:hidden;
+  scroll-behavior:smooth
 }
-#stage.live{opacity:1}
+#text-zone::-webkit-scrollbar{display:none}
 
-/* ===== MOMENT — fills screen ===== */
-.moment{
-  position:absolute;inset:0;
-  opacity:0;pointer-events:none;
-  transition:opacity 1.2s ease;
-  display:flex;align-items:center;justify-content:center;
-}
-.moment.active{opacity:1;pointer-events:auto}
-
-/* Full-bleed image background */
-.moment-bg{
-  position:absolute;inset:0;z-index:1;
-  transition:filter 1.2s ease,transform 1.2s ease;
-}
-.moment-bg img,.moment-bg video{
-  width:100%;height:100%;object-fit:cover;display:block;
-}
-/* Placeholder when no real image */
-.moment-bg .ph{
-  width:100%;height:100%;
-  display:flex;align-items:center;justify-content:center;
-  font-family:'JetBrains Mono',monospace;font-size:9px;
-  color:#1a1a1a;letter-spacing:2px;
-}
-.moment-bg .ph.ph1{background:linear-gradient(135deg,#0d0906,#1a1008,#0a0704)}
-.moment-bg .ph.ph2{background:linear-gradient(135deg,#060810,#0a1018,#04060d)}
-.moment-bg .ph.ph3{background:linear-gradient(135deg,#080510,#10081a,#060410)}
-.moment-bg .ph.ph4{background:linear-gradient(135deg,#100906,#1a0f08,#0d0804)}
-.moment-bg .ph.ph5{background:linear-gradient(135deg,#060d0a,#0a1810,#040d08)}
-
-/* Dark overlay for text readability */
-.moment-dim{
-  position:absolute;inset:0;z-index:2;
-  background:rgba(0,0,0,0.55);
-  transition:background 0.8s ease;
-}
-.mode-machine .moment-dim{background:rgba(0,0,0,0.7)}
-.mode-glitch .moment-dim{background:rgba(0,0,0,0.4)}
-
-/* ===== HUMAN TEXT (default) ===== */
-.human-layer{
-  position:relative;z-index:10;
-  max-width:680px;padding:0 40px;
-  text-align:center;
-  opacity:1;transition:opacity 0.8s ease;
-}
-.mode-machine .human-layer{opacity:0}
-.mode-glitch .human-layer{opacity:0}
-
-.human-layer .h-title{
-  font-family:'Playfair Display',serif;
-  font-size:36px;line-height:1.5;font-weight:400;
-  color:rgba(255,255,255,0.9);margin-bottom:16px;
-  letter-spacing:0.5px;
-}
-.human-layer .h-body{
-  font-size:16px;line-height:1.9;color:rgba(255,255,255,0.5);
+/* ── LINES ── */
+.ln{
+  display:block;
+  font-size:clamp(13px,1.55vw,21px);
   font-weight:300;
+  line-height:1.65;
+  color:rgba(0,230,100,0.86)
 }
-.human-layer .h-sub{
-  margin-top:20px;font-size:12px;font-style:italic;
-  color:rgba(255,255,255,0.25);
+.ln.sm{
+  font-size:clamp(10px,1.1vw,15px);
+  color:rgba(0,200,88,0.30);
+  letter-spacing:0.08em;
+  text-transform:uppercase
 }
+.ln.name{
+  font-size:clamp(28px,3.8vw,56px);
+  font-weight:400;line-height:1.1;
+  color:rgba(0,248,118,0.97)
+}
+.ln.prompt{color:rgba(0,190,78,0.36)}
+.ln.err{color:rgba(255,54,20,0.88)}
+.ln.result{
+  font-size:clamp(20px,2.8vw,40px);
+  font-weight:400;
+  color:rgba(255,54,20,0.92)
+}
+.ln.note{
+  font-size:clamp(11px,1.3vw,18px);
+  color:rgba(0,175,72,0.32)
+}
+.ln.typing::after{
+  content:'█';
+  color:rgba(0,248,120,0.80);
+  animation:blink 0.52s steps(1) infinite;
+  font-size:0.85em
+}
+@keyframes blink{0%,49%{opacity:1}50%,100%{opacity:0}}
 
-/* ===== ASSOCIATIONS — small floating images ===== */
-.associations{
-  position:absolute;z-index:10;
-  display:flex;gap:8px;bottom:80px;left:50%;
-  transform:translateX(-50%);
-  opacity:0.6;transition:opacity 0.8s ease;
+/* ── RIGHT: PHOTO COLUMN ── */
+#photo-col{
+  flex:0 0 42%;
+  position:relative;
+  overflow:hidden;
+  background:#000
 }
-.mode-machine .associations{opacity:0.15;filter:grayscale(1)}
-.mode-glitch .associations{filter:url(#liquify);opacity:0.5}
-
-.assoc{
-  width:56px;height:56px;overflow:hidden;
-  border:1px solid rgba(255,255,255,0.06);
-  transition:filter 1s ease;
-}
-.assoc img{width:100%;height:100%;object-fit:cover}
-.assoc .ap{
-  width:100%;height:100%;background:#111;
-  display:flex;align-items:center;justify-content:center;
-  font-size:6px;color:#333;font-family:'JetBrains Mono',monospace;
-}
-
-/* ===== MACHINE OVERLAY ===== */
-.machine-layer{
-  position:absolute;inset:0;z-index:15;
-  pointer-events:none;opacity:0;
-  transition:opacity 0.6s ease;
-  display:flex;align-items:center;justify-content:center;
-}
-.mode-machine .machine-layer{opacity:1}
-
-/* Bounding box on the image */
-.m-bbox{
+#photo-wrap{
   position:absolute;
-  top:15%;left:20%;right:20%;bottom:15%;
-  border:1px solid rgba(0,255,200,0.12);
+  top:-3%;left:50%;
+  transform:translateX(-50%);
+  height:118vh;
+  display:inline-block;
+  /* bottom fade into black */
+  -webkit-mask-image:linear-gradient(to bottom,black 28%,rgba(0,0,0,0.80) 52%,rgba(0,0,0,0.32) 74%,transparent 90%);
+  mask-image:linear-gradient(to bottom,black 28%,rgba(0,0,0,0.80) 52%,rgba(0,0,0,0.32) 74%,transparent 90%)
 }
-.m-bbox::before,.m-bbox::after{
-  content:'';position:absolute;width:18px;height:18px;
-  border-color:rgba(0,255,200,0.45);border-style:solid;
+#photo-el{
+  height:100%;width:auto;display:block;
+  object-fit:contain;
+  filter:brightness(0.88) contrast(1.06)
 }
-.m-bbox::before{top:-1px;left:-1px;border-width:2px 0 0 2px}
-.m-bbox::after{bottom:-1px;right:-1px;border-width:0 2px 2px 0}
-
-.m-corner-tr,.m-corner-bl{
-  position:absolute;width:18px;height:18px;
-  border-color:rgba(0,255,200,0.45);border-style:solid;
-}
-.m-corner-tr{top:calc(15% - 1px);right:calc(20% - 1px);border-width:2px 2px 0 0}
-.m-corner-bl{bottom:calc(15% - 1px);left:calc(20% - 1px);border-width:0 0 2px 2px}
-
-.m-sweep{
-  position:absolute;left:20%;right:20%;height:1px;
-  background:linear-gradient(90deg,transparent,rgba(0,255,200,0.35),transparent);
-  animation:sweep 3.5s linear infinite;
-}
-@keyframes sweep{0%{top:15%}100%{top:85%}}
-
-/* Machine data text — centered */
-.m-data{
-  max-width:500px;text-align:left;
-  font-family:'JetBrains Mono',monospace;
-  font-size:12px;line-height:2.2;
-  color:rgba(0,255,200,0.7);
-  position:relative;z-index:20;
-}
-.m-data .mk{color:rgba(0,255,200,0.3)}
-.m-data .mv{color:rgba(0,255,200,0.75)}
-.m-data .mc{
-  display:block;margin-top:12px;font-size:9px;
-  color:rgba(0,255,200,0.25);
-  border-top:1px solid rgba(0,255,200,0.06);padding-top:10px;
-}
-
-/* Machine label */
-.m-label{
-  position:absolute;bottom:calc(15% + 8px);left:calc(20% + 8px);
-  font-family:'JetBrains Mono',monospace;font-size:8px;
-  color:rgba(0,255,200,0.5);background:rgba(0,0,0,0.6);
-  padding:2px 8px;letter-spacing:2px;
-}
-.m-conf{
-  position:absolute;top:calc(15% + 6px);right:calc(20% + 6px);
-  font-family:'JetBrains Mono',monospace;font-size:8px;
-  color:rgba(0,255,200,0.3);
-}
-
-/* Subtle grid */
-#m-grid{
-  position:fixed;inset:0;z-index:4;pointer-events:none;
-  opacity:0;transition:opacity 0.8s ease;
+#photo-grid{
+  position:absolute;inset:0;pointer-events:none;z-index:2;
   background-image:
-    linear-gradient(rgba(0,255,200,0.012) 1px,transparent 1px),
-    linear-gradient(90deg,rgba(0,255,200,0.012) 1px,transparent 1px);
-  background-size:80px 80px;
+    linear-gradient(rgba(0,200,100,0.042) 1px,transparent 1px),
+    linear-gradient(90deg,rgba(0,200,100,0.042) 1px,transparent 1px);
+  background-size:32px 32px;
+  opacity:0;transition:opacity 3s ease
 }
-.mode-machine #m-grid{opacity:1}
-
-/* Machine image treatment */
-.mode-machine .moment-bg{
-  filter:grayscale(1) contrast(1.4) brightness(0.5);
+#photo-grid.on{opacity:1}
+#scan-line{
+  position:absolute;left:0;right:0;height:2px;top:0;z-index:5;
+  background:linear-gradient(90deg,transparent 5%,rgba(0,248,120,0.88) 35%,rgba(0,248,120,0.88) 65%,transparent 95%);
+  box-shadow:0 0 12px rgba(0,248,120,0.24);opacity:0
 }
-
-/* ===== GLITCH / LIQUIFY ===== */
-.mode-glitch .moment-bg{
-  filter:url(#liquify);
-  transform:scale(1.02);
-}
-.mode-glitch .human-layer{opacity:0}
-
-/* Glitch text fragments that appear */
-.glitch-layer{
-  position:absolute;inset:0;z-index:15;
-  pointer-events:none;opacity:0;
-  transition:opacity 0.5s ease;
-  display:flex;align-items:center;justify-content:center;
-}
-.mode-glitch .glitch-layer{opacity:1}
-
-.glitch-text{
-  max-width:500px;text-align:center;
-  filter:url(#liquify-text);
-}
-.glitch-text .gl{
-  display:block;line-height:2.4;
-}
-.glitch-text .gl:nth-child(odd){
-  font-family:'Playfair Display',serif;
-  font-size:20px;color:rgba(255,255,255,0.5);
-}
-.glitch-text .gl:nth-child(even){
-  font-family:'JetBrains Mono',monospace;
-  font-size:10px;color:rgba(255,255,255,0.2);
-  letter-spacing:2px;
-}
-
-/* ===== FIXED UI ===== */
-#mode-label{
-  position:fixed;bottom:24px;left:24px;z-index:900;
-  font-family:'JetBrains Mono',monospace;
-  font-size:13px;letter-spacing:5px;text-transform:uppercase;
-  transition:color 0.6s ease;opacity:0.6;
-}
-.mode-human #mode-label{color:#999}
-.mode-machine #mode-label{color:rgba(0,255,200,0.7)}
-.mode-glitch #mode-label{color:rgba(255,60,90,0.6)}
-.ml{display:none}
-.ml.on{display:inline}
-
-/* Webcam */
-#cam{
-  position:fixed;bottom:18px;right:18px;
-  width:110px;height:82px;z-index:900;
-  border:1px solid rgba(255,255,255,0.04);
-  overflow:hidden;opacity:0.4;
-  transition:border-color 0.5s ease;
-}
-#cam::after{
-  content:'';position:absolute;top:3px;right:4px;
-  width:4px;height:4px;border-radius:50%;background:#f33;
-  animation:rec 1s ease infinite;
-}
-@keyframes rec{50%{opacity:0.1}}
-#cam video{
-  width:100%;height:100%;object-fit:cover;
-  transform:scaleX(-1);filter:grayscale(0.5) contrast(1.1);
-}
-.mode-machine #cam{border-color:rgba(0,255,200,0.1)}
-.mode-glitch #cam{border-color:rgba(255,60,90,0.2)}
-
-/* Moment counter */
-#counter{
-  position:fixed;bottom:24px;right:150px;z-index:900;
-  font-family:'JetBrains Mono',monospace;font-size:9px;
-  color:rgba(255,255,255,0.12);letter-spacing:2px;
-}
-
-/* Progress dots */
-#dots{
-  position:fixed;right:18px;top:50%;transform:translateY(-50%);
-  z-index:900;display:flex;flex-direction:column;gap:16px;
-}
-.dot{
-  width:5px;height:5px;border-radius:50%;
-  border:1px solid rgba(255,255,255,0.08);
-  cursor:pointer;transition:all 0.4s ease;
-}
-.dot.on{background:rgba(255,255,255,0.35);border-color:rgba(255,255,255,0.35)}
-.mode-machine .dot.on{background:rgba(0,255,200,0.5);border-color:rgba(0,255,200,0.5)}
-
-/* Scanlines */
-#scan{
-  position:fixed;inset:0;z-index:800;pointer-events:none;
-  background:repeating-linear-gradient(0deg,transparent,transparent 3px,rgba(0,0,0,0.03) 3px,rgba(0,0,0,0.03) 4px);
-  opacity:0.5;
-}
-
-/* Vignette */
-#vig{
-  position:fixed;inset:0;z-index:799;pointer-events:none;
-  background:radial-gradient(ellipse at center,transparent 55%,rgba(0,0,0,0.6) 100%);
-}
+#scan-line.sweep{animation:psweep 2.1s cubic-bezier(0.2,0.08,0.2,1) forwards}
+@keyframes psweep{0%{top:0;opacity:0}5%{opacity:1}90%{top:100%;opacity:0.82}100%{top:100%;opacity:0}}
+.cn{position:absolute;width:16px;height:16px;border-color:rgba(0,224,100,0.40);border-style:solid;opacity:0;transition:opacity 0.35s}
+.cn.on{opacity:1}
+.cn-tl{top:0;left:0;border-width:2px 0 0 2px}
+.cn-tr{top:0;right:0;border-width:2px 2px 0 0}
+.cn-bl{bottom:0;left:0;border-width:0 0 2px 2px}
+.cn-br{bottom:0;right:0;border-width:0 2px 2px 0}
 </style>
 </head>
 <body>
 
-<!-- SVG LIQUIFY FILTERS -->
-<svg class="svg-filters">
-<defs>
-  <filter id="liquify">
-    <feTurbulence type="turbulence" baseFrequency="0.012" numOctaves="3" seed="3" result="t">
-      <animate attributeName="baseFrequency" values="0.012;0.022;0.015;0.025;0.012" dur="3s" repeatCount="indefinite"/>
-    </feTurbulence>
-    <feDisplacementMap in="SourceGraphic" in2="t" scale="30" xChannelSelector="R" yChannelSelector="G">
-      <animate attributeName="scale" values="25;50;30;55;25" dur="2.5s" repeatCount="indefinite"/>
-    </feDisplacementMap>
-  </filter>
-  <filter id="liquify-text">
-    <feTurbulence type="turbulence" baseFrequency="0.018" numOctaves="2" seed="7" result="t">
-      <animate attributeName="baseFrequency" values="0.018;0.028;0.018" dur="4s" repeatCount="indefinite"/>
-    </feTurbulence>
-    <feDisplacementMap in="SourceGraphic" in2="t" scale="10" xChannelSelector="R" yChannelSelector="G">
-      <animate attributeName="scale" values="8;18;10;20;8" dur="3s" repeatCount="indefinite"/>
-    </feDisplacementMap>
-  </filter>
-</defs>
+<svg style="position:absolute;width:0;height:0;overflow:hidden" aria-hidden="true">
+  <defs>
+    <filter id="warp" x="-30%" y="-30%" width="160%" height="160%" color-interpolation-filters="sRGB">
+      <feTurbulence id="turb" type="fractalNoise" baseFrequency="0.004 0.003" numOctaves="4" seed="7" result="noise"/>
+      <feDisplacementMap id="disp" in="SourceGraphic" in2="noise" scale="0" xChannelSelector="R" yChannelSelector="G"/>
+    </filter>
+  </defs>
 </svg>
 
-<!-- ===== INTRO ===== -->
-<div id="intro">
-  <div id="intro-text">
-    <div class="intro-line" data-d="500">You think you know what you are looking at.</div>
-    <div class="intro-line" data-d="2800">A machine sees data. A human sees meaning.</div>
-    <div class="intro-line" data-d="5500">But what happens when the system tries to hold both at once?</div>
-    <div class="intro-line" data-d="8500">This is what breaks.</div>
+<div id="crt"></div>
+<div id="flash"></div>
+<div id="danger"></div>
+
+<div id="scene">
+
+  <!-- LEFT: terminal -->
+  <div id="term-col">
+    <div id="term-titlebar">
+      <span id="ttl-icon">■</span>
+      <span id="ttl-path">C:\PERCEPTION_SYSTEM\analysis.exe</span>
+      <div id="ttl-btns">
+        <div class="ttl-btn">_</div>
+        <div class="ttl-btn">□</div>
+        <div class="ttl-btn">✕</div>
+      </div>
+    </div>
+    <div id="text-zone"></div>
   </div>
+
+  <!-- RIGHT: photo -->
+  <div id="photo-col">
+    <div id="photo-wrap">
+      <img id="photo-el" src="" alt="">
+      <div id="photo-grid"></div>
+      <div id="scan-line"></div>
+      <div class="cn cn-tl" id="ctl"></div>
+      <div class="cn cn-tr" id="ctr"></div>
+      <div class="cn cn-bl" id="cbl"></div>
+      <div class="cn cn-br" id="cbr"></div>
+    </div>
+  </div>
+
 </div>
 
-<!-- ===== INSTRUCTIONS ===== -->
-<div id="instructions">
-  <div class="instr-inner">
-    <h2>how to perceive</h2>
-    <div class="instr-row">
-      <div class="instr-icon">&#128578;</div>
-      <div class="instr-text"><strong>Show emotion</strong> — the system sees a human experience.</div>
-    </div>
-    <div class="instr-row">
-      <div class="instr-icon">&#128528;</div>
-      <div class="instr-text"><strong>Stay neutral</strong> — the machine takes over. Data, labels, analysis.</div>
-    </div>
-    <div class="instr-row">
-      <div class="instr-icon">&#9995;</div>
-      <div class="instr-text"><strong>Cover your face</strong> — the system cannot reconcile. Everything warps.</div>
-    </div>
-    <button id="begin-btn">enter</button>
-  </div>
-</div>
+<script type="module">
+function W(ms){return new Promise(r=>setTimeout(r,ms));}
+function flash(){
+  const f=document.getElementById('flash');
+  f.style.transition='none';f.style.opacity='0.13';
+  setTimeout(()=>{f.style.transition='opacity 0.07s';f.style.opacity='0';},55);
+}
 
-<!-- ===== FIXED UI ===== -->
-<div id="scan"></div>
-<div id="vig"></div>
-<div id="m-grid"></div>
+let sndCtx=null,masterGain=null;
+let audioMuted=false;
 
-<!-- ===== STAGE ===== -->
-<div id="stage" class="mode-human">
+function tryInitSnd(){
+  if(sndCtx)return;
+  try{
+    sndCtx=new(window.AudioContext||window.webkitAudioContext)();
+    masterGain=sndCtx.createGain();masterGain.gain.value=0.30;
+    masterGain.connect(sndCtx.destination);
+    drone();
+  }catch(e){}
+}
+document.addEventListener('keydown',tryInitSnd,{once:true});
+document.addEventListener('click',tryInitSnd,{once:true});
 
-  <div id="mode-label">
-    <span class="ml" data-m="human">human</span>
-    <span class="ml" data-m="machine">machine</span>
-    <span class="ml" data-m="glitch">hallucination</span>
-  </div>
+function keyClick(){
+  if(!sndCtx||audioMuted)return;
+  const t=sndCtx.currentTime;
+  // short noise burst — mechanical key feel
+  const len=Math.floor(sndCtx.sampleRate*0.024);
+  const buf=sndCtx.createBuffer(1,len,sndCtx.sampleRate);
+  const d=buf.getChannelData(0);
+  for(let i=0;i<len;i++) d[i]=(Math.random()*2-1)*Math.pow(1-i/len,3.5);
+  const src=sndCtx.createBufferSource();src.buffer=buf;
+  const g=sndCtx.createGain();
+  g.gain.setValueAtTime(0.055,t);g.gain.exponentialRampToValueAtTime(0.001,t+0.022);
+  src.connect(g);g.connect(masterGain);src.start(t);
+  // subtle low thud
+  const o=sndCtx.createOscillator();const og=sndCtx.createGain();
+  o.type='sine';o.frequency.value=190;
+  og.gain.setValueAtTime(0.032,t);og.gain.exponentialRampToValueAtTime(0.001,t+0.014);
+  o.connect(og);og.connect(masterGain);o.start(t);o.stop(t+0.016);
+}
 
-  <div id="cam"><video id="webcam" autoplay playsinline></video></div>
-  <div id="counter">01 / 05</div>
-  <div id="dots"></div>
-
-  <!-- ===== MOMENT 1: INSTINCT ===== -->
-  <div class="moment active" data-i="0">
-    <div class="moment-bg">
-      <img src="images/Childhood/DSC_0295.JPG" alt="childhood creativity">
-    </div>
-    <div class="moment-dim"></div>
-
-    <div class="human-layer">
-      <div class="h-title">I create because I have always been curious</div>
-      <div class="h-body">Before I knew what design was, I was painting on every surface, rapping about science at school, turning nothing into something just to see what would happen.</div>
-      <div class="h-sub">this is how I naturally think</div>
-    </div>
-
-    <div class="associations">
-      <!-- REPLACE: real associated images -->
-      <div class="assoc"><div class="ap">family</div></div>
-      <div class="assoc"><div class="ap">paint</div></div>
-      <div class="assoc"><div class="ap">play</div></div>
-    </div>
-
-    <div class="machine-layer">
-      <div class="m-bbox"></div>
-      <div class="m-corner-tr"></div><div class="m-corner-bl"></div>
-      <div class="m-sweep"></div>
-      <div class="m-label">SUBJECT — EARLY_MEMORY</div>
-      <div class="m-conf">84.3%</div>
-      <div class="m-data">
-        <span class="mk">subject_age: </span><span class="mv">child</span><br>
-        <span class="mk">behavior_cluster: </span><span class="mv">expressive</span><br>
-        <span class="mk">activities: </span><span class="mv">[painting, performance, experimentation]</span><br>
-        <span class="mk">creative_index: </span><span class="mv">high</span><br>
-        <span class="mk">pattern: </span><span class="mv">curiosity → creation → expression</span>
-        <span class="mc">confidence: 84.3% | source: memory_archive</span>
-      </div>
-    </div>
-
-    <div class="glitch-layer">
-      <div class="glitch-text">
-        <span class="gl">I was the kind of kid who—</span>
-        <span class="gl">subject_age: undefined</span>
-        <span class="gl">curiosity cannot be indexed</span>
-        <span class="gl">behavior_cluster: [OVERFLOW]</span>
-        <span class="gl">the machine sees a child</span>
-        <span class="gl">confidence: 12%</span>
-        <span class="gl">I see the beginning of everything</span>
-      </div>
-    </div>
-  </div>
-
-  <!-- ===== MOMENT 2: STRUCTURE ===== -->
-  <div class="moment" data-i="1">
-    <div class="moment-bg">
-      <!-- REPLACE: <img src="images/design.jpg" alt=""> -->
-      <div class="ph ph2">[ design training — systems, typography, branding ]</div>
-    </div>
-    <div class="moment-dim"></div>
-
-    <div class="human-layer">
-      <div class="h-title">I learned systems and problem solving</div>
-      <div class="h-body">Communication Design gave me language, but it also made me question where expression ends and problem solving begins.</div>
-      <div class="h-sub">design is thinking made visible</div>
-    </div>
-
-    <div class="associations">
-      <div class="assoc"><div class="ap">type</div></div>
-      <div class="assoc"><div class="ap">grid</div></div>
-      <div class="assoc"><div class="ap">brand</div></div>
-    </div>
-
-    <div class="machine-layer">
-      <div class="m-bbox"></div>
-      <div class="m-corner-tr"></div><div class="m-corner-bl"></div>
-      <div class="m-sweep"></div>
-      <div class="m-label">SUBJECT — DESIGN_EDUCATION</div>
-      <div class="m-conf">79.1%</div>
-      <div class="m-data">
-        <span class="mk">discipline: </span><span class="mv">communication design</span><br>
-        <span class="mk">mode_shift: </span><span class="mv">art → design</span><br>
-        <span class="mk">subtopics: </span><span class="mv">[visual systems, branding, interface]</span><br>
-        <span class="mk">sentiment: </span><span class="mv">reflective</span><br>
-        <span class="mk">identity_formation: </span><span class="mv">in progress</span>
-        <span class="mc">confidence: 79.1% | trajectory: emerging</span>
-      </div>
-    </div>
-
-    <div class="glitch-layer">
-      <div class="glitch-text">
-        <span class="gl">expression ends where—</span>
-        <span class="gl">ERROR: boundary not found</span>
-        <span class="gl">the system learned to speak</span>
-        <span class="gl">topic: [CORRUPTED]</span>
-        <span class="gl">but language was never enough</span>
-      </div>
-    </div>
-  </div>
-
-  <!-- ===== MOMENT 3: CONFLICT (DELOITTE) ===== -->
-  <div class="moment" data-i="2">
-    <div class="moment-bg">
-      <!-- REPLACE: <img src="images/deloitte.jpg" alt=""> -->
-      <div class="ph ph3">[ enterprise — structure, scale, constraint ]</div>
-    </div>
-    <div class="moment-dim"></div>
-
-    <div class="human-layer">
-      <div class="h-title">I learned structure, but something felt missing</div>
-      <div class="h-body">Deloitte taught me scale and discipline, but it also showed me the limits of work that does not feel personal.</div>
-      <div class="h-sub">building for systems, wondering about people</div>
-    </div>
-
-    <div class="associations">
-      <div class="assoc"><div class="ap">product</div></div>
-      <div class="assoc"><div class="ap">system</div></div>
-      <div class="assoc"><div class="ap">scale</div></div>
-    </div>
-
-    <div class="machine-layer">
-      <div class="m-bbox"></div>
-      <div class="m-corner-tr"></div><div class="m-corner-bl"></div>
-      <div class="m-sweep"></div>
-      <div class="m-label">SUBJECT — ENTERPRISE</div>
-      <div class="m-conf">91.7%</div>
-      <div class="m-data">
-        <span class="mk">employment: </span><span class="mv">product designer</span><br>
-        <span class="mk">industry: </span><span class="mv">enterprise consulting</span><br>
-        <span class="mk">client_region: </span><span class="mv">United States</span><br>
-        <span class="mk">output_mode: </span><span class="mv">structured delivery</span><br>
-        <span class="mk">personal_alignment: </span><span class="mv">partial</span>
-        <span class="mc">confidence: 91.7% | the machine thrived here</span>
-      </div>
-    </div>
-
-    <div class="glitch-layer">
-      <div class="glitch-text">
-        <span class="gl">I was disappearing into the system</span>
-        <span class="gl">output_mode: delivery delivery delivery</span>
-        <span class="gl">confidence: 91.7%</span>
-        <span class="gl">personal_alignment: ERROR</span>
-        <span class="gl">but confidence in what?</span>
-      </div>
-    </div>
-  </div>
-
-  <!-- ===== MOMENT 4: SHIFT (SHORT FILM) ===== -->
-  <div class="moment" data-i="3">
-    <div class="moment-bg">
-      <!-- REPLACE: <img src="images/film.jpg" alt=""> or <video src="film-clip.mp4" autoplay muted loop> -->
-      <div class="ph ph4">[ short film — identity, introspection, turning point ]</div>
-    </div>
-    <div class="moment-dim"></div>
-
-    <div class="human-layer">
-      <div class="h-title">This changed everything</div>
-      <div class="h-body">The short film was the first time I felt my work and my inner life align. It did not feel like work. It felt like becoming free.</div>
-      <div class="h-sub">everything before was preparation, everything after was purpose</div>
-    </div>
-
-    <div class="associations">
-      <div class="assoc"><div class="ap">cinema</div></div>
-      <div class="assoc"><div class="ap">light</div></div>
-      <div class="assoc"><div class="ap">self</div></div>
-    </div>
-
-    <div class="machine-layer">
-      <div class="m-bbox"></div>
-      <div class="m-corner-tr"></div><div class="m-corner-bl"></div>
-      <div class="m-sweep"></div>
-      <div class="m-label">ARTIFACT — SELF_INITIATED</div>
-      <div class="m-conf">67.2%</div>
-      <div class="m-data">
-        <span class="mk">artifact_type: </span><span class="mv">short film</span><br>
-        <span class="mk">purpose: </span><span class="mv">self initiated</span><br>
-        <span class="mk">themes: </span><span class="mv">[identity, introspection, transition]</span><br>
-        <span class="mk">impact_score: </span><span class="mv">unresolved</span><br>
-        <span class="mk">trajectory_change: </span><span class="mv">significant</span>
-        <span class="mc">confidence: 67.2% | the system cannot classify freedom</span>
-      </div>
-    </div>
-
-    <div class="glitch-layer">
-      <div class="glitch-text">
-        <span class="gl">it felt like becoming—</span>
-        <span class="gl">impact_score: cannot be measured</span>
-        <span class="gl">I stopped performing for the machine</span>
-        <span class="gl">trajectory_change: irreversible</span>
-        <span class="gl">some things do not have confidence scores</span>
-      </div>
-    </div>
-  </div>
-
-  <!-- ===== MOMENT 5: NOW (PARSONS + IDENTITY) ===== -->
-  <div class="moment" data-i="4">
-    <div class="moment-bg">
-      <!-- REPLACE: <img src="images/now.jpg" alt=""> -->
-      <div class="ph ph5">[ now — AI, XR, perception, emerging media ]</div>
-    </div>
-    <div class="moment-dim"></div>
-
-    <div class="human-layer">
-      <div class="h-title">I now build experiences that explore meaning</div>
-      <div class="h-body">What I love most is building experiences that let people feel, question, and see themselves differently. Technology became a medium, not just a tool.</div>
-      <div class="h-sub">a life cannot be reduced to data</div>
-    </div>
-
-    <div class="associations">
-      <div class="assoc"><div class="ap">AI</div></div>
-      <div class="assoc"><div class="ap">XR</div></div>
-      <div class="assoc"><div class="ap">mirror</div></div>
-      <div class="assoc"><div class="ap">golden record</div></div>
-    </div>
-
-    <div class="machine-layer">
-      <div class="m-bbox"></div>
-      <div class="m-corner-tr"></div><div class="m-corner-bl"></div>
-      <div class="m-sweep"></div>
-      <div class="m-label">PROFILE — CURRENT_STATE</div>
-      <div class="m-conf">73.8%</div>
-      <div class="m-data">
-        <span class="mk">creator_profile: </span><span class="mv">interdisciplinary</span><br>
-        <span class="mk">current_interests: </span><span class="mv">[AI, XR, storytelling, immersion]</span><br>
-        <span class="mk">predicted_output: </span><span class="mv">reflective experiences</span><br>
-        <span class="mk">intent: </span><span class="mv">bridge perception and feeling</span><br>
-        <span class="mk">trajectory: </span><span class="mv">open</span>
-        <span class="mc">confidence: 73.8% | meaning cannot be reduced</span>
-      </div>
-    </div>
-
-    <div class="glitch-layer">
-      <div class="glitch-text">
-        <span class="gl">you cannot classify what you have not lived</span>
-        <span class="gl">predicted_output: UNPREDICTABLE</span>
-        <span class="gl">the system is the mirror</span>
-        <span class="gl">confidence: undefined</span>
-        <span class="gl">perception failed</span>
-        <span class="gl">meaning cannot be reduced</span>
-        <span class="gl">system hallucinating</span>
-      </div>
-    </div>
-  </div>
-
-</div><!-- /stage -->
-
-<script>
-// ============================================
-// CONFIG — model loads locally now
-// ============================================
-const MODEL_URL = './model/';
-
-// Class names from YOUR model
-const CLASS_MAP = {
-  'Human': 'human',
-  'Machine': 'machine',
-  'Glitch': 'glitch',
-};
-
-const THRESHOLDS = { glitch:0.55, human:0.60, machine:0.30 };
-const DEBOUNCE_MS = 700;
-
-// ============================================
-// STATE
-// ============================================
-let mode = 'human';
-let pending = 'human';
-let pendingT = 0;
-let cur = 0;
-const total = 5;
-let model = null;
-let camEl = null;
-let live = false;
-
-// ============================================
-// INTRO
-// ============================================
-function runIntro(){
-  const lines = document.querySelectorAll('.intro-line');
-  lines.forEach(l => {
-    const d = parseInt(l.dataset.d);
-    setTimeout(() => {
-      lines.forEach(p => { if(p !== l && p.classList.contains('show')) p.classList.add('fade') });
-      l.classList.add('show');
-    }, d);
+function chirp(){
+  if(!sndCtx||audioMuted)return;
+  const t=sndCtx.currentTime,o=sndCtx.createOscillator(),g=sndCtx.createGain();
+  o.type='triangle';o.frequency.setValueAtTime(1480,t);o.frequency.exponentialRampToValueAtTime(820,t+0.06);
+  g.gain.setValueAtTime(0.048,t);g.gain.exponentialRampToValueAtTime(0.001,t+0.09);
+  o.connect(g);g.connect(masterGain);o.start(t);o.stop(t+0.10);
+}
+function beep(f=800,d=0.07,v=0.06){
+  if(!sndCtx||audioMuted)return;
+  const t=sndCtx.currentTime,o=sndCtx.createOscillator(),g=sndCtx.createGain();
+  o.type='square';o.frequency.value=f;
+  g.gain.setValueAtTime(v,t);g.gain.exponentialRampToValueAtTime(0.001,t+d);
+  o.connect(g);g.connect(masterGain);o.start(t);o.stop(t+d);
+}
+function alarm(){
+  if(!sndCtx||audioMuted)return;
+  const t=sndCtx.currentTime;
+  [0,0.13,0.26].forEach((off,i)=>{
+    const o=sndCtx.createOscillator(),g=sndCtx.createGain();
+    o.type='sawtooth';o.frequency.value=200+i*50;
+    g.gain.setValueAtTime(0.045,t+off);g.gain.exponentialRampToValueAtTime(0.001,t+off+0.10);
+    o.connect(g);g.connect(masterGain);o.start(t+off);o.stop(t+off+0.12);
   });
-  setTimeout(() => {
-    document.getElementById('intro').classList.add('done');
-    setTimeout(() => {
-      document.getElementById('intro').style.display = 'none';
-      document.getElementById('instructions').classList.add('show');
-    }, 1500);
-  }, 11000);
+}
+function drone(){
+  if(!sndCtx)return;
+  const t=sndCtx.currentTime,o=sndCtx.createOscillator(),g=sndCtx.createGain();
+  o.type='sine';o.frequency.value=46;
+  const l=sndCtx.createOscillator(),lg=sndCtx.createGain();
+  l.frequency.value=0.13;lg.gain.value=3;
+  l.connect(lg);lg.connect(o.frequency);l.start(t);
+  g.gain.setValueAtTime(0,t);g.gain.linearRampToValueAtTime(0.020,t+4);
+  g.gain.linearRampToValueAtTime(0.020,t+80);g.gain.exponentialRampToValueAtTime(0.001,t+83);
+  o.connect(g);g.connect(masterGain);o.start(t);o.stop(t+83);
 }
 
-// ============================================
-// BEGIN
-// ============================================
-document.getElementById('begin-btn').addEventListener('click', () => {
-  const instr = document.getElementById('instructions');
-  instr.classList.remove('show');
-  setTimeout(() => {
-    instr.style.display = 'none';
-    document.getElementById('stage').classList.add('live');
-    live = true;
-    buildDots();
-    initCam();
-  }, 800);
-});
+let dpId=null;
+function startDanger(){
+  if(dpId)return;
+  const ov=document.getElementById('danger');let ph=0;
+  dpId=setInterval(()=>{ph+=0.044;ov.style.opacity=((Math.sin(ph)*0.5+0.5)*0.68).toFixed(3);},28);
+}
+function stopDanger(){
+  if(dpId){clearInterval(dpId);dpId=null;}
+  document.getElementById('danger').style.opacity='0';
+}
 
-// ============================================
-// WEBCAM + MODEL
-// ============================================
-async function initCam(){
-  camEl = document.getElementById('webcam');
-  try {
-    const stream = await navigator.mediaDevices.getUserMedia({video:{facingMode:'user',width:320,height:240}});
-    camEl.srcObject = stream;
-    await camEl.play();
-    try {
-      model = await tmImage.load(MODEL_URL+'model.json', MODEL_URL+'metadata.json');
-      console.log('Model loaded:', model.getClassLabels());
-      predict();
-    } catch(e){ console.error('Model error:', e) }
-  } catch(e){
-    console.warn('No webcam:', e);
-    document.getElementById('cam').style.opacity='0.05';
+/* ── LIQUID WARP ── */
+const turb=document.getElementById('turb');
+const disp=document.getElementById('disp');
+const photoEl=document.getElementById('photo-el');
+const WARP=[
+  [0.004,0.003,0  ],  // level 0: no displacement during cycling phase
+  [0.013,0.009,6  ],
+  [0.030,0.024,20 ],
+  [0.058,0.044,46 ],
+  [0.112,0.090,88 ],
+];
+let warpCur=0,warpTgt=0;
+const wT0=performance.now();
+function lerp(a,b,t){return a+(b-a)*t;}
+function warpLoop(now){
+  warpCur+=(warpTgt-warpCur)*0.022;
+  const t=(now-wT0)*0.001;
+  const lvl=Math.min(warpCur,3.99);
+  const fl=Math.floor(lvl),tl=lvl-fl;
+  const a=WARP[fl],b=WARP[Math.min(fl+1,4)];
+  const bBFX=lerp(a[0],b[0],tl),bBFY=lerp(a[1],b[1],tl),bSc=lerp(a[2],b[2],tl);
+  const osc=0.28+warpCur*0.14;
+  const bfx=bBFX*(1+Math.sin(t*0.62)*osc);
+  const bfy=bBFY*(1+Math.sin(t*0.84+1.4)*osc);
+  const sc=bSc*(1+Math.sin(t*0.46+0.9)*osc*0.55);
+  turb.setAttribute('baseFrequency',`${Math.max(0.001,bfx).toFixed(4)} ${Math.max(0.001,bfy).toFixed(4)}`);
+  disp.setAttribute('scale',Math.max(0,sc).toFixed(2));
+  if(!photoEl.style.filter.includes('url(#warp)')){
+    photoEl.style.filter='url(#warp) brightness(0.88) contrast(1.06)';
   }
+  requestAnimationFrame(warpLoop);
 }
+requestAnimationFrame(warpLoop);
+function setWarp(t){warpTgt=t;}
 
-// ============================================
-// PREDICTION
-// ============================================
-function predict(){
-  if(!model||!camEl){requestAnimationFrame(predict);return}
-  model.predict(camEl).then(preds => {
-    let m = {};
-    preds.forEach(p => { const k = CLASS_MAP[p.className]; if(k) m[k]=p.probability; });
+/* ── TYPEWRITER ── */
+const tz=document.getElementById('text-zone');
 
-    let target = 'machine';
-    if(m.glitch >= THRESHOLDS.glitch) target='glitch';
-    else if(m.human >= THRESHOLDS.human && m.human > (m.machine||0)) target='human';
-
-    const now = Date.now();
-    if(target !== pending){ pending=target; pendingT=now; }
-    else if(target !== mode && (now-pendingT) >= DEBOUNCE_MS) setMode(target);
-
-    requestAnimationFrame(predict);
-  }).catch(() => requestAnimationFrame(predict));
-}
-
-// ============================================
-// MODE
-// ============================================
-function setMode(m){
-  if(m===mode) return;
-  const s = document.getElementById('stage');
-  s.classList.remove('mode-'+mode);
-  mode = m;
-  s.classList.add('mode-'+mode);
-  document.querySelectorAll('.ml').forEach(l => l.classList.toggle('on', l.dataset.m===mode));
-}
-
-// ============================================
-// NAVIGATION
-// ============================================
-function buildDots(){
-  const c = document.getElementById('dots');
-  for(let i=0;i<total;i++){
-    const d = document.createElement('div');
-    d.className = 'dot'+(i===0?' on':'');
-    d.addEventListener('click', ()=>go(i));
-    c.appendChild(d);
+async function type(el,text,speed=18){
+  el.classList.add('typing');
+  for(const ch of text){
+    el.textContent+=ch;
+    tz.scrollTop=tz.scrollHeight;
+    if(ch!==' ') keyClick();
+    await W(speed+(Math.random()*6|0));
   }
+  el.classList.remove('typing');
 }
 
-function go(i){
-  if(i<0||i>=total||i===cur) return;
-  document.querySelectorAll('.moment')[cur].classList.remove('active');
-  document.querySelectorAll('.moment')[i].classList.add('active');
-  document.querySelectorAll('.dot')[cur].classList.remove('on');
-  document.querySelectorAll('.dot')[i].classList.add('on');
-  cur = i;
-  document.getElementById('counter').textContent = `0${cur+1} / 0${total}`;
+async function line(text,cls='',speed=18,after=0){
+  const d=document.createElement('div');
+  d.className='ln'+(cls?' '+cls:'');
+  tz.appendChild(d);
+  await type(d,text,speed);
+  tz.scrollTop=tz.scrollHeight;
+  if(after)await W(after);
+  return d;
 }
 
-// Keyboard (dev) + scroll
-document.addEventListener('keydown', e => {
-  if(!live) return;
-  if(e.key==='1') setMode('machine');
-  if(e.key==='2') setMode('human');
-  if(e.key==='3') setMode('glitch');
-  if(e.key==='ArrowDown'||e.key==='ArrowRight'){e.preventDefault();go(cur+1)}
-  if(e.key==='ArrowUp'||e.key==='ArrowLeft'){e.preventDefault();go(cur-1)}
-});
+async function blank(ms=50){
+  const d=document.createElement('div');d.className='ln';d.innerHTML='&nbsp;';
+  tz.appendChild(d);tz.scrollTop=tz.scrollHeight;await W(ms);
+}
 
-let scrollLock = false;
-document.addEventListener('wheel', e => {
-  if(!live||scrollLock) return;
-  scrollLock=true; setTimeout(()=>scrollLock=false, 700);
-  go(e.deltaY>0 ? cur+1 : cur-1);
-});
+/* ── PHOTO CYCLING ── */
+const CYCLE_PHOTOS = [
+  'sid vids and pics/DSC_0371.JPG',
+  'sid vids and pics/IMG_9384.jpg',
+];
+const WARP_PHOTO = 'sid vids and pics/sidpic.png';
 
-// ============================================
-// INIT
-// ============================================
-document.addEventListener('DOMContentLoaded', () => {
-  document.querySelector('.ml[data-m="human"]').classList.add('on');
-  runIntro();
-});
+async function crossfadeTo(src, dur=600){
+  // zoom out + fade away
+  photoEl.style.transition=`opacity ${dur*0.45}ms ease, transform ${dur*0.45}ms ease`;
+  photoEl.style.opacity='0';
+  photoEl.style.transform='scale(1.06)';
+  await W(dur*0.45+30);
+
+  // swap src, reset to slightly zoomed out
+  photoEl.src=src;
+  photoEl.style.transition='none';
+  photoEl.style.transform='scale(0.94)';
+  photoEl.style.opacity='0';
+  await W(40); // allow repaint
+
+  // zoom in + fade in
+  photoEl.style.transition=`opacity ${dur*0.55}ms ease, transform ${dur*0.7}ms cubic-bezier(0.22,1,0.36,1)`;
+  photoEl.style.opacity='1';
+  photoEl.style.transform='scale(1)';
+  await W(dur*0.7);
+}
+
+/* ── MAIN SEQUENCE ── */
+async function run(){
+
+  const scene=document.getElementById('scene');
+
+  // start with first cycling photo
+  photoEl.src = CYCLE_PHOTOS[0];
+  scene.classList.add('on');
+  await W(700);
+
+  // scan
+  ['ctl','ctr','cbl','cbr'].forEach(id=>document.getElementById(id).classList.add('on'));
+  document.getElementById('scan-line').classList.add('sweep');
+  chirp();
+  await W(400);
+  document.getElementById('photo-grid').classList.add('on');
+
+  // ACT 1 — IDENTITY (cycling photos while typing)
+  await line("today's subject:  Siddharth Mehta",'',14,100);
+
+  // cycle to second photo during date line
+  crossfadeTo(CYCLE_PHOTOS[1], 1100);
+  await line('date range:       1999 — 2026','',14,800);
+
+  // hold, then gradually land on warp portrait
+  await W(1500);
+  await crossfadeTo(WARP_PHOTO, 1100);
+
+  // ACT 2 — DATA (warp begins on the main portrait)
+  setWarp(1);
+  await blank(40);
+  await line('curiosity_drive   = elevated',   '',12,200); chirp();
+  await line('wonder_index      = 0.88',        '',12,200); chirp();
+  await line('what_he_builds    = experiences', '',12,200); chirp();
+  await line('what_he_fears     = irrelevance', '',12,200); chirp();
+  await line('identity_state    = [UNDEFINED]', '',12,340);
+
+  setWarp(2.2);
+  await blank(60);
+
+  // ACT 3 — FAIL
+  setWarp(3.5);
+  alarm();startDanger();
+  await W(200);
+  await line('WARNING: ambiguous_pattern detected','err',11,120); beep(310,0.07,0.06);
+  await line('ERROR:   no_matching_schema',         'err',11,120); beep(280,0.07,0.06);
+  await line('ERROR:   pattern_undefined',          'err',11,160);
+
+  setWarp(4);
+  await W(220);
+  alarm();
+  await blank(30);
+  await line('RESULT:  ∅  UNCLASSIFIABLE','result',11,400);
+  await blank(20);
+  await line("some things don't fit in boxes.",'note',12,300);
+
+  await W(700);
+  stopDanger();
+
+  // TV OFF — sequence ends on black
+  scene.classList.add('tvoff');
+  await W(240);
+  flash();await W(62);flash();await W(46);flash();
+}
+
+run();
 </script>
-
 </body>
 </html>

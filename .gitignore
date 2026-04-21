@@ -1,0 +1,60 @@
+.DS_Store
+**/.DS_Store
+
+# Exclude all videos from sid vids and pics
+sid vids and pics/*.mov
+sid vids and pics/*.MOV
+sid vids and pics/*.mp4
+sid vids and pics/*.MP4
+sid vids and pics/*.MOV
+sid vids and pics/*.m4v
+
+# Exclude large/unused images from sid vids and pics
+# (keep only the three used: DSC_0371.JPG, IMG_9384.jpg, sidpic.png)
+sid vids and pics/019.JPG
+sid vids and pics/2017-09-17-PHOTO-00000010.jpg
+sid vids and pics/DSC_0040.JPG
+sid vids and pics/DSC_0075.JPG
+sid vids and pics/DSC_0077.JPG
+sid vids and pics/DSC_0192.JPG
+sid vids and pics/DSC_0295.JPG
+sid vids and pics/DSC_0318 (2).JPG
+sid vids and pics/DSC_0398.JPG
+sid vids and pics/DSC_0484.JPG
+sid vids and pics/hh.png
+sid vids and pics/IMG_20161006_195903.jpg
+sid vids and pics/IMG_20181130_154952.jpg
+sid vids and pics/IMG_20181224_180813.jpg
+sid vids and pics/IMG_20181227_203333.jpg
+sid vids and pics/IMG_20190111_113617.jpg
+sid vids and pics/IMG_20190208_183306__01.jpg
+sid vids and pics/IMG_20190226_221333_021.jpg
+sid vids and pics/IMG_3601.JPG
+sid vids and pics/IMG_3602.JPG
+sid vids and pics/IMG_4427.jpg
+sid vids and pics/photo_2024-01-29_112353.JPG
+sid vids and pics/photo_2025-02-08_184202.JPG
+sid vids and pics/PHOTO-2026-03-31-16-05-53 2.jpg
+sid vids and pics/PHOTO-2026-03-31-16-05-53.jpg
+sid vids and pics/PHOTO-2026-03-31-16-05-54.jpg
+sid vids and pics/PHOTO-2026-03-31-17-46-28.jpg
+sid vids and pics/PICT0023.JPG
+sid vids and pics/PICT0121.JPG
+sid vids and pics/PICT0149.JPG
+sid vids and pics/sid_pic.jpg
+sid vids and pics/sidd.png
+sid vids and pics/sidpic.jpg
+"sid vids and pics/WhatsApp Image 2026-03-30 at 12.50.58 AM.jpeg"
+
+# Other large untracked files
+*.gif
+*.mov
+*.MOV
+*.mp4
+*.MP4
+IMG_1589.mov
+IMG_1591.mov
+IMG_1593.MOV
+IMG_1961.MOV
+IMG_1991.MOV
+IMG_1997.MOV
